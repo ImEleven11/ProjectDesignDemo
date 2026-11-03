@@ -37,9 +37,13 @@ Web 工作台支持创建项目、批量上传图片、启动 COLMAP、轮询任
 | `POST` | `/api/projects/{projectId}/images` | 以 multipart 形式上传一张图像 |
 | `GET` | `/api/projects/{projectId}/images` | 查询项目图像列表 |
 | `GET` | `/api/projects/{projectId}/images/{imageId}` | 查询图像元数据 |
+| `GET` | `/api/projects/{projectId}/images/{imageId}/content` | 读取图像内容/缩略图 |
+| `DELETE` | `/api/projects/{projectId}/images/{imageId}` | 删除非运行任务使用的图像 |
 | `POST` | `/api/projects/{projectId}/jobs` | 创建稀疏重建任务 |
 | `GET` | `/api/projects/{projectId}/jobs` | 查询项目任务列表 |
 | `GET` | `/api/projects/{projectId}/jobs/{jobId}` | 查询任务详情 |
+| `POST` | `/api/projects/{projectId}/jobs/{jobId}/retry` | 将失败任务重新排队 |
+| `GET` | `/api/projects/{projectId}/jobs/{jobId}/log` | 查看 COLMAP 日志末尾 |
 | `GET` | `/api/projects/{projectId}/jobs/{jobId}/result` | 下载成功任务的 `sparse.ply` |
 
 创建项目的 JSON 示例：

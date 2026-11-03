@@ -15,6 +15,9 @@ const loading = ref(true)
 const busy = ref(false)
 const uploadProgress = ref('')
 const errorMessage = ref('')
+const jobLog = ref('')
+const showJobLog = ref(false)
+const logLoading = ref(false)
 const projectForm = ref({ name: '', description: '', heritageType: '器物' })
 
 const selectedProject = computed(() => projects.value.find((project) => project.id === selectedProjectId.value))
@@ -97,6 +100,41 @@ async function createJob(algorithm: ReconstructionJob['algorithm']) {
   busy.value = false
 }
 
+async function deleteImage(image: ProjectImage) {
+  if (!selectedProjectId.value || !window.confirm(`确认删除图片“${image.originalFilename}”？`)) return
+  busy.value = true
+  await run(async () => {
+    await api.deleteImage(selectedProjectId.value, image.id)
+    images.value = images.value.filter((item) => item.id !== image.id)
+  })
+  busy.value = false
+}
+
+async function retrySelectedJob() {
+  if (!selectedProjectId.value || !selectedJob.value) return
+  busy.value = true
+  await run(async () => {
+    const created = await api.retryJob(selectedProjectId.value, selectedJob.value!.id)
+    jobs.value.unshift(created)
+    selectedJobId.value = created.id
+  })
+  busy.value = false
+}
+
+async function toggleJobLog() {
+  if (!selectedProjectId.value || !selectedJob.value) return
+  if (showJobLog.value) {
+    showJobLog.value = false
+    return
+  }
+  logLoading.value = true
+  await run(async () => {
+    jobLog.value = await api.getJobLog(selectedProjectId.value, selectedJob.value!.id)
+    showJobLog.value = true
+  })
+  logLoading.value = false
+}
+
 function statusText(status: ReconstructionJob['status']) {
   return { QUEUED: '等待中', RUNNING: '重建中', SUCCEEDED: '已完成', FAILED: '失败' }[status]
 }
@@ -112,6 +150,11 @@ function formatBytes(value: number) {
 watch(selectedProjectId, () => {
   selectedJobId.value = ''
   void run(loadProjectData)
+})
+
+watch(selectedJobId, () => {
+  showJobLog.value = false
+  jobLog.value = ''
 })
 
 onMounted(async () => {
@@ -187,9 +230,10 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
               <small>真实 COLMAP 至少 3 张；建议围绕文物连续拍摄 20–60 张</small>
             </label>
             <div v-if="images.length" class="image-list">
-              <div v-for="image in images.slice(-6)" :key="image.id">
-                <span class="image-file">IMG</span>
+              <div v-for="image in images.slice(-6)" :key="image.id" class="image-card">
+                <img :src="api.imageContentUrl(selectedProjectId, image.id)" :alt="image.label || image.originalFilename" loading="lazy" />
                 <span><strong>{{ image.originalFilename }}</strong><small>{{ formatBytes(image.sizeBytes) }}</small></span>
+                <button type="button" :disabled="busy || hasActiveJob" :aria-label="`删除 ${image.originalFilename}`" @click="deleteImage(image)">×</button>
               </div>
               <p v-if="images.length > 6">另有 {{ images.length - 6 }} 张影像</p>
             </div>
@@ -209,6 +253,11 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
               </button>
               <p v-if="!jobs.length" class="list-empty">上传照片并启动首个重建任务。</p>
             </div>
+            <div v-if="selectedJob" class="job-actions">
+              <button v-if="selectedJob.algorithm === 'COLMAP_SPARSE'" type="button" :disabled="logLoading" @click="toggleJobLog">{{ showJobLog ? '关闭日志' : logLoading ? '读取中…' : '查看日志' }}</button>
+              <button v-if="selectedJob.status === 'FAILED'" class="retry" type="button" :disabled="busy" @click="retrySelectedJob">重试任务</button>
+            </div>
+            <div v-if="showJobLog" class="log-panel"><div><span>COLMAP LOG · LAST 30K</span><button type="button" @click="showJobLog = false">×</button></div><pre>{{ jobLog }}</pre></div>
           </article>
         </div>
 

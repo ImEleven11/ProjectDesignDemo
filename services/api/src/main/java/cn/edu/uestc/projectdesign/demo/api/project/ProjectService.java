@@ -100,6 +100,43 @@ public class ProjectService {
                 .orElseThrow(() -> new NotFoundException("项目图像不存在: " + imageId));
     }
 
+    public ImageContent getImageContent(UUID projectId, UUID imageId) {
+        getProject(projectId);
+        ProjectRepository.StoredImage image = repository.findStoredImage(projectId, imageId)
+                .orElseThrow(() -> new NotFoundException("项目图像不存在: " + imageId));
+        Path content = resolveUpload(projectId, image.storedFilename());
+        if (!Files.isRegularFile(content)) {
+            throw new NotFoundException("图像文件不存在: " + imageId);
+        }
+        String contentType = image.contentType();
+        if (contentType == null || MediaTypeNames.OCTET_STREAM.equals(contentType)) {
+            try {
+                contentType = Files.probeContentType(content);
+            } catch (IOException ignored) {
+                contentType = MediaTypeNames.OCTET_STREAM;
+            }
+        }
+        return new ImageContent(content, image.originalFilename(), contentType);
+    }
+
+    @Transactional
+    public void deleteImage(UUID projectId, UUID imageId) {
+        getProject(projectId);
+        if (repository.countActiveJobs(projectId) > 0) {
+            throw new IllegalArgumentException("存在运行中的重建任务，暂不能删除图像");
+        }
+        ProjectRepository.StoredImage image = repository.findStoredImage(projectId, imageId)
+                .orElseThrow(() -> new NotFoundException("项目图像不存在: " + imageId));
+        if (repository.deleteImage(projectId, imageId) != 1) {
+            throw new NotFoundException("项目图像不存在: " + imageId);
+        }
+        try {
+            Files.deleteIfExists(resolveUpload(projectId, image.storedFilename()));
+        } catch (IOException exception) {
+            throw new UncheckedIOException("删除图像文件失败", exception);
+        }
+    }
+
     @Transactional
     public JobResponse createJob(UUID projectId, CreateJobRequest request) {
         getProject(projectId);
@@ -129,6 +166,15 @@ public class ProjectService {
                 .orElseThrow(() -> new NotFoundException("重建任务不存在: " + jobId));
     }
 
+    @Transactional
+    public JobResponse retryJob(UUID projectId, UUID jobId) {
+        JobResponse failedJob = getJob(projectId, jobId);
+        if (!"FAILED".equals(failedJob.status())) {
+            throw new IllegalArgumentException("仅失败任务可以重试");
+        }
+        return createJob(projectId, new CreateJobRequest(failedJob.algorithm()));
+    }
+
     public Path getJobResult(UUID projectId, UUID jobId) {
         JobResponse job = getJob(projectId, jobId);
         if (!"SUCCEEDED".equals(job.status()) || job.resultPath() == null) {
@@ -139,6 +185,32 @@ public class ProjectService {
             throw new NotFoundException("重建结果文件不存在: " + jobId);
         }
         return result;
+    }
+
+    public String getJobLog(UUID projectId, UUID jobId) {
+        JobResponse job = getJob(projectId, jobId);
+        if (!"COLMAP_SPARSE".equals(job.algorithm())) {
+            throw new IllegalArgumentException("该任务没有 COLMAP 日志");
+        }
+        Path log = reconstructionRoot.resolve("jobs").resolve(jobId.toString()).resolve("colmap.log").normalize();
+        if (!log.startsWith(reconstructionRoot) || !Files.isRegularFile(log)) {
+            throw new NotFoundException("任务日志尚未生成: " + jobId);
+        }
+        try {
+            String content = Files.readString(log);
+            int limit = 30_000;
+            return content.length() <= limit ? content : content.substring(content.length() - limit);
+        } catch (IOException exception) {
+            throw new UncheckedIOException("读取任务日志失败", exception);
+        }
+    }
+
+    private Path resolveUpload(UUID projectId, String storedFilename) {
+        Path content = uploadRoot.resolve(projectId.toString()).resolve(storedFilename).normalize();
+        if (!content.startsWith(uploadRoot)) {
+            throw new IllegalArgumentException("非法文件路径");
+        }
+        return content;
     }
 
     private static String safeOriginalFilename(String filename) {
@@ -162,5 +234,15 @@ public class ProjectService {
             return null;
         }
         return value.trim();
+    }
+
+    public record ImageContent(Path path, String originalFilename, String contentType) {
+    }
+
+    private static final class MediaTypeNames {
+        private static final String OCTET_STREAM = "application/octet-stream";
+
+        private MediaTypeNames() {
+        }
     }
 }

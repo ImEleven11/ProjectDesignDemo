@@ -15,6 +15,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
+async function requestText(path: string): Promise<string> {
+  const response = await fetch(path)
+  if (!response.ok) throw new Error(await errorMessage(response))
+  return response.text()
+}
+
+async function requestVoid(path: string, init: RequestInit): Promise<void> {
+  const response = await fetch(path, init)
+  if (!response.ok) throw new Error(await errorMessage(response))
+}
+
+async function errorMessage(response: Response): Promise<string> {
+  try {
+    const error = (await response.json()) as ApiError
+    if (error.message) return error.message
+  } catch {
+    // Fall through to the HTTP status.
+  }
+  return `请求失败（${response.status}）`
+}
+
 export const api = {
   listProjects: () => request<HeritageProject[]>('/api/projects'),
 
@@ -38,6 +59,12 @@ export const api = {
     })
   },
 
+  imageContentUrl: (projectId: string, imageId: string) =>
+    `/api/projects/${projectId}/images/${imageId}/content`,
+
+  deleteImage: (projectId: string, imageId: string) =>
+    requestVoid(`/api/projects/${projectId}/images/${imageId}`, { method: 'DELETE' }),
+
   listJobs: (projectId: string) =>
     request<ReconstructionJob[]>(`/api/projects/${projectId}/jobs`),
 
@@ -47,4 +74,10 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ algorithm }),
     }),
+
+  retryJob: (projectId: string, jobId: string) =>
+    request<ReconstructionJob>(`/api/projects/${projectId}/jobs/${jobId}/retry`, { method: 'POST' }),
+
+  getJobLog: (projectId: string, jobId: string) =>
+    requestText(`/api/projects/${projectId}/jobs/${jobId}/log`),
 }

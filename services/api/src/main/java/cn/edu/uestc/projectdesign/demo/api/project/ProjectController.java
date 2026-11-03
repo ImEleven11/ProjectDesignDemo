@@ -9,9 +9,11 @@ import jakarta.validation.Valid;
 
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.ContentDisposition;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -75,6 +77,37 @@ public class ProjectController {
         return service.getImage(projectId, imageId);
     }
 
+    @GetMapping("/{projectId}/images/{imageId}/content")
+    ResponseEntity<FileSystemResource> getImageContent(
+            @PathVariable("projectId") UUID projectId,
+            @PathVariable("imageId") UUID imageId) {
+        ProjectService.ImageContent content = service.getImageContent(projectId, imageId);
+        MediaType contentType;
+        try {
+            contentType = content.contentType() == null
+                    ? MediaType.APPLICATION_OCTET_STREAM
+                    : MediaType.parseMediaType(content.contentType());
+        } catch (IllegalArgumentException exception) {
+            contentType = MediaType.APPLICATION_OCTET_STREAM;
+        }
+        String disposition = ContentDisposition.inline()
+                .filename(content.originalFilename(), java.nio.charset.StandardCharsets.UTF_8)
+                .build()
+                .toString();
+        return ResponseEntity.ok()
+                .contentType(contentType)
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition)
+                .body(new FileSystemResource(content.path()));
+    }
+
+    @DeleteMapping("/{projectId}/images/{imageId}")
+    ResponseEntity<Void> deleteImage(
+            @PathVariable("projectId") UUID projectId,
+            @PathVariable("imageId") UUID imageId) {
+        service.deleteImage(projectId, imageId);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{projectId}/jobs")
     ResponseEntity<JobResponse> createJob(
             @PathVariable("projectId") UUID projectId,
@@ -95,6 +128,22 @@ public class ProjectController {
             @PathVariable("projectId") UUID projectId,
             @PathVariable("jobId") UUID jobId) {
         return service.getJob(projectId, jobId);
+    }
+
+    @PostMapping("/{projectId}/jobs/{jobId}/retry")
+    ResponseEntity<JobResponse> retryJob(
+            @PathVariable("projectId") UUID projectId,
+            @PathVariable("jobId") UUID jobId) {
+        JobResponse response = service.retryJob(projectId, jobId);
+        return ResponseEntity.created(URI.create("/api/projects/" + projectId + "/jobs/" + response.id()))
+                .body(response);
+    }
+
+    @GetMapping(path = "/{projectId}/jobs/{jobId}/log", produces = MediaType.TEXT_PLAIN_VALUE)
+    ResponseEntity<String> getJobLog(
+            @PathVariable("projectId") UUID projectId,
+            @PathVariable("jobId") UUID jobId) {
+        return ResponseEntity.ok(service.getJobLog(projectId, jobId));
     }
 
     @GetMapping("/{projectId}/jobs/{jobId}/result")

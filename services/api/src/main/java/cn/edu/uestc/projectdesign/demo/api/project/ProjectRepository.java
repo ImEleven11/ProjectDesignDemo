@@ -96,8 +96,41 @@ public class ProjectRepository {
                 .optional();
     }
 
+    Optional<StoredImage> findStoredImage(UUID projectId, UUID imageId) {
+        return jdbcClient.sql("""
+                        SELECT id, project_id, original_filename, stored_filename, content_type
+                        FROM project_images WHERE project_id = :projectId AND id = :imageId
+                        """)
+                .param("projectId", projectId)
+                .param("imageId", imageId)
+                .query((resultSet, rowNumber) -> new StoredImage(
+                        resultSet.getObject("id", UUID.class),
+                        resultSet.getObject("project_id", UUID.class),
+                        resultSet.getString("original_filename"),
+                        resultSet.getString("stored_filename"),
+                        resultSet.getString("content_type")))
+                .optional();
+    }
+
+    int deleteImage(UUID projectId, UUID imageId) {
+        return jdbcClient.sql("DELETE FROM project_images WHERE project_id = :projectId AND id = :imageId")
+                .param("projectId", projectId)
+                .param("imageId", imageId)
+                .update();
+    }
+
     int countImages(UUID projectId) {
         return jdbcClient.sql("SELECT COUNT(*) FROM project_images WHERE project_id = :projectId")
+                .param("projectId", projectId)
+                .query(Integer.class)
+                .single();
+    }
+
+    int countActiveJobs(UUID projectId) {
+        return jdbcClient.sql("""
+                        SELECT COUNT(*) FROM reconstruction_jobs
+                        WHERE project_id = :projectId AND status IN ('QUEUED', 'RUNNING')
+                        """)
                 .param("projectId", projectId)
                 .query(Integer.class)
                 .single();
@@ -199,5 +232,13 @@ public class ProjectRepository {
                 resultSet.getString("result_path"),
                 resultSet.getObject("created_at", OffsetDateTime.class),
                 resultSet.getObject("updated_at", OffsetDateTime.class));
+    }
+
+    record StoredImage(
+            UUID id,
+            UUID projectId,
+            String originalFilename,
+            String storedFilename,
+            String contentType) {
     }
 }
