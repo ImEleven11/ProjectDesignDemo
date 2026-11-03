@@ -20,16 +20,16 @@ class ProjectServiceTest {
     Path uploadRoot;
 
     @Test
-    void rejectsAJobWhenTheProjectHasFewerThanTwoImages() {
+    void rejectsAColmapJobWhenTheProjectHasFewerThanThreeImages() {
         ProjectRepository repository = mock(ProjectRepository.class);
         ProjectService service = service(repository);
         UUID projectId = UUID.randomUUID();
         when(repository.findProject(projectId)).thenReturn(java.util.Optional.of(project(projectId)));
-        when(repository.countImages(projectId)).thenReturn(1);
+        when(repository.countImages(projectId)).thenReturn(2);
 
         assertThatThrownBy(() -> service.createJob(projectId, new CreateJobRequest("COLMAP_SPARSE")))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("至少上传 2 张图像");
+                .hasMessageContaining("至少需要 3 张图像");
     }
 
     @Test
@@ -43,6 +43,20 @@ class ProjectServiceTest {
         assertThatThrownBy(() -> service.uploadImage(projectId, file, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("上传文件不能为空");
+    }
+
+    @Test
+    void rejectsANonImageUpload() {
+        ProjectRepository repository = mock(ProjectRepository.class);
+        ProjectService service = service(repository);
+        UUID projectId = UUID.randomUUID();
+        when(repository.findProject(projectId)).thenReturn(java.util.Optional.of(project(projectId)));
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "notes.txt", "text/plain", "not an image".getBytes());
+
+        assertThatThrownBy(() -> service.uploadImage(projectId, file, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("仅支持 JPG");
     }
 
     private static ProjectResponse project(UUID id) {

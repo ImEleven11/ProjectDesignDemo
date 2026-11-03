@@ -52,12 +52,15 @@ services:
       context: services/reconstruction-worker
     environment:
       WORKER_DATA_ROOT: /data
+      WORKER_INPUT_ROOT: /inputs
       API_BASE_URL: http://api:8080
       WORKER_TOKEN: ${WORKER_TOKEN:-demo-worker-local-token}
+      COLMAP_TIMEOUT_SECONDS: ${COLMAP_TIMEOUT_SECONDS:-1800}
     ports:
       - "${WORKER_PORT:-8001}:8001"
     volumes:
       - reconstruction-data:/data
+      - api-upload-data:/inputs:ro
     depends_on:
       api:
         condition: service_healthy

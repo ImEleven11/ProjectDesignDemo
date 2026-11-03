@@ -12,16 +12,21 @@ import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app.colmap_pipeline import run_colmap_sparse
+
 
 SERVICE_NAME = "reconstruction-worker"
 DATA_ROOT = Path(os.getenv("WORKER_DATA_ROOT", "/data")).resolve()
+INPUT_ROOT = Path(os.getenv("WORKER_INPUT_ROOT", "/inputs")).resolve()
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8080").rstrip("/")
 WORKER_TOKEN = os.getenv("WORKER_TOKEN", "demo-worker-local-token")
+COLMAP_TIMEOUT_SECONDS = int(os.getenv("COLMAP_TIMEOUT_SECONDS", "1800"))
 
 
 class JobRequest(BaseModel):
     job_id: UUID = Field(alias="jobId")
     project_id: UUID = Field(alias="projectId")
+    algorithm: Literal["COLMAP_SPARSE", "DEMO_SPARSE"]
     image_count: int = Field(alias="imageCount", ge=2)
 
 
@@ -70,6 +75,23 @@ def submit_job(
 
 def run_reconstruction(request: JobRequest) -> None:
     try:
+        if request.algorithm == "COLMAP_SPARSE":
+            callback(request.job_id, "RUNNING", "COLMAP 正在提取特征并执行稀疏重建")
+            result = run_colmap_sparse(
+                request.job_id,
+                request.project_id,
+                DATA_ROOT,
+                INPUT_ROOT,
+                COLMAP_TIMEOUT_SECONDS,
+            )
+            callback(
+                request.job_id,
+                "SUCCEEDED",
+                f"COLMAP 稀疏重建完成：{result.image_count} 张图像，{result.point_count} 个三维点",
+                result.result_path,
+            )
+            return
+
         callback(request.job_id, "RUNNING", "Demo 稀疏重建正在生成点云")
         relative_result = Path("jobs") / str(request.job_id) / "sparse.ply"
         output_path = (DATA_ROOT / relative_result).resolve()

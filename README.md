@@ -1,12 +1,12 @@
 # ProjectDesignDemo
 
-数字文博稀疏三维重建 Demo。当前已具备从项目与图像管理、异步任务执行，到 PLY 稀疏点云产物下载的完整运行闭环。
+数字文博稀疏三维重建 Demo。当前已具备从项目与图像管理、真实 COLMAP 异步重建，到 PLY 稀疏点云产物下载的完整运行闭环。
 
 ## 模块
 
 - `apps/web`：Vue 3、TypeScript、Vite 和 Nginx。
 - `services/api`：Java 17、Spring Boot 3、Flyway 和 Actuator。
-- `services/reconstruction-worker`：Python 3.12、FastAPI，当前提供确定性 Demo 稀疏点云引擎，并预留真实 COLMAP 执行器边界。
+- `services/reconstruction-worker`：Python 3.12、FastAPI 和 COLMAP 3.10，执行 CPU 稀疏重建。
 - `compose.yaml`：本地服务编排和健康检查。
 
 ## 本地启动
@@ -23,9 +23,9 @@
 
 ## 业务 API
 
-当前最小业务链路为：创建文博项目 → 上传至少两张图像 → 创建 `COLMAP_SPARSE` 稀疏重建任务 → Worker 异步生成 Demo 稀疏点云 → 查询任务状态并下载 PLY。
+当前最小业务链路为：创建文博项目 → 上传至少三张图像 → 创建 `COLMAP_SPARSE` 稀疏重建任务 → Worker 异步执行特征提取、穷举匹配和增量建图 → 查询任务状态并下载 PLY。
 
-> 当前产物由 `DEMO_SPARSE_V1` 确定性引擎生成，用于验证系统闭环，不代表基于上传照片完成了真实摄影测量。后续步骤将把执行器替换为 COLMAP。
+`COLMAP_SPARSE` 是默认真实重建引擎。`DEMO_SPARSE` 仍可用于不依赖照片内容的快速系统联调，最低需要两张图片。
 
 | 方法 | 接口 | 用途 |
 | --- | --- | --- |
@@ -48,6 +48,22 @@
   "description": "用于稀疏重建流程验证",
   "heritageType": "器物"
 }
+```
+
+创建真实重建任务：
+
+```json
+{
+  "algorithm": "COLMAP_SPARSE"
+}
+```
+
+建议围绕静止文物连续拍摄 20–60 张照片，相邻照片保持约 60%–80% 画面重叠，避免反光、运动模糊和纯色背景。当前容器使用 CPU SIFT，单任务超时时间可通过 `COLMAP_TIMEOUT_SECONDS` 调整。
+
+如需生成一组仅用于本地管线验收的确定性多视角图片：
+
+```powershell
+python tools/generate_colmap_fixture.py .tmp/colmap-fixture --images 8
 ```
 
 停止服务：

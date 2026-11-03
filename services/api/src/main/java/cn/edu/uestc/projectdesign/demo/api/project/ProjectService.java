@@ -25,7 +25,9 @@ import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.ProjectRes
 
 @Service
 public class ProjectService {
-    private static final Set<String> ALGORITHMS = Set.of("COLMAP_SPARSE");
+    private static final Set<String> ALGORITHMS = Set.of("COLMAP_SPARSE", "DEMO_SPARSE");
+    private static final Set<String> IMAGE_EXTENSIONS = Set.of(
+            ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp");
 
     private final ProjectRepository repository;
     private final ApplicationEventPublisher eventPublisher;
@@ -66,7 +68,11 @@ public class ProjectService {
             throw new IllegalArgumentException("上传文件不能为空");
         }
         String originalFilename = safeOriginalFilename(file.getOriginalFilename());
-        String storedFilename = UUID.randomUUID() + extensionOf(originalFilename);
+        String extension = extensionOf(originalFilename);
+        if (!IMAGE_EXTENSIONS.contains(extension)) {
+            throw new IllegalArgumentException("仅支持 JPG、PNG、TIFF、BMP 或 WebP 图像");
+        }
+        String storedFilename = UUID.randomUUID() + extension;
         Path projectDirectory = uploadRoot.resolve(projectId.toString()).normalize();
         Path target = projectDirectory.resolve(storedFilename).normalize();
         if (!target.startsWith(uploadRoot)) {
@@ -99,14 +105,16 @@ public class ProjectService {
         getProject(projectId);
         String algorithm = request.algorithm().trim().toUpperCase(Locale.ROOT);
         if (!ALGORITHMS.contains(algorithm)) {
-            throw new IllegalArgumentException("当前 Demo 仅支持 COLMAP_SPARSE 算法");
+            throw new IllegalArgumentException("仅支持 COLMAP_SPARSE 或 DEMO_SPARSE 算法");
         }
         int imageCount = repository.countImages(projectId);
-        if (imageCount < 2) {
-            throw new IllegalArgumentException("至少上传 2 张图像后才能创建重建任务");
+        int minimumImages = "COLMAP_SPARSE".equals(algorithm) ? 3 : 2;
+        if (imageCount < minimumImages) {
+            throw new IllegalArgumentException("使用 " + algorithm + " 至少需要 " + minimumImages + " 张图像");
         }
         JobResponse job = repository.insertJob(UUID.randomUUID(), projectId, algorithm, imageCount);
-        eventPublisher.publishEvent(new ReconstructionDispatcher.JobCreated(job.id(), projectId, imageCount));
+        eventPublisher.publishEvent(new ReconstructionDispatcher.JobCreated(
+                job.id(), projectId, algorithm, imageCount));
         return job;
     }
 

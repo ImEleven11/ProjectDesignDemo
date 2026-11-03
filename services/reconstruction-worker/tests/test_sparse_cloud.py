@@ -1,6 +1,7 @@
 from pathlib import Path
 from uuid import UUID
 
+from app.colmap_pipeline import _ply_vertex_count
 from app.main import create_demo_sparse_cloud
 
 
@@ -15,3 +16,4 @@ def test_sparse_cloud_is_deterministic_and_valid(tmp_path: Path) -> None:
     assert point_count == 240
     assert first.read_bytes() == second.read_bytes()
     assert "element vertex 240" in first.read_text(encoding="ascii")
+    assert _ply_vertex_count(first) == 240

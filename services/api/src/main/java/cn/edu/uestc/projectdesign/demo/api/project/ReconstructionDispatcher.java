@@ -36,7 +36,8 @@ public class ReconstructionDispatcher {
             restClient.post()
                     .uri("/jobs")
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + workerToken)
-                    .body(new WorkerJobRequest(event.jobId(), event.projectId(), event.imageCount()))
+                    .body(new WorkerJobRequest(
+                            event.jobId(), event.projectId(), event.algorithm(), event.imageCount()))
                     .retrieve()
                     .toBodilessEntity();
         } catch (RestClientException exception) {
@@ -44,9 +45,9 @@ public class ReconstructionDispatcher {
         }
     }
 
-    public record JobCreated(UUID jobId, UUID projectId, int imageCount) {
+    public record JobCreated(UUID jobId, UUID projectId, String algorithm, int imageCount) {
     }
 
-    private record WorkerJobRequest(UUID jobId, UUID projectId, int imageCount) {
+    private record WorkerJobRequest(UUID jobId, UUID projectId, String algorithm, int imageCount) {
     }
 }
