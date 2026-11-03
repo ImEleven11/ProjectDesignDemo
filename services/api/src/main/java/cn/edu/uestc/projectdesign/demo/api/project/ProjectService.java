@@ -1,0 +1,137 @@
+package cn.edu.uestc.projectdesign.demo.api.project;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import cn.edu.uestc.projectdesign.demo.api.common.NotFoundException;
+import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.CreateJobRequest;
+import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.CreateProjectRequest;
+import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.ImageResponse;
+import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.JobResponse;
+import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.ProjectResponse;
+
+@Service
+public class ProjectService {
+    private static final Set<String> ALGORITHMS = Set.of("COLMAP_SPARSE");
+
+    private final ProjectRepository repository;
+    private final Path uploadRoot;
+
+    public ProjectService(ProjectRepository repository, @Value("${app.upload-root}") String uploadRoot) {
+        this.repository = repository;
+        this.uploadRoot = Path.of(uploadRoot).toAbsolutePath().normalize();
+    }
+
+    @Transactional
+    public ProjectResponse createProject(CreateProjectRequest request) {
+        return repository.insertProject(
+                UUID.randomUUID(),
+                request.name().trim(),
+                trimToNull(request.description()),
+                request.heritageType().trim());
+    }
+
+    public List<ProjectResponse> listProjects() {
+        return repository.findProjects();
+    }
+
+    public ProjectResponse getProject(UUID projectId) {
+        return repository.findProject(projectId)
+                .orElseThrow(() -> new NotFoundException("文博项目不存在: " + projectId));
+    }
+
+    @Transactional
+    public ImageResponse uploadImage(UUID projectId, MultipartFile file, String label) {
+        getProject(projectId);
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("上传文件不能为空");
+        }
+        String originalFilename = safeOriginalFilename(file.getOriginalFilename());
+        String storedFilename = UUID.randomUUID() + extensionOf(originalFilename);
+        Path projectDirectory = uploadRoot.resolve(projectId.toString()).normalize();
+        Path target = projectDirectory.resolve(storedFilename).normalize();
+        if (!target.startsWith(uploadRoot)) {
+            throw new IllegalArgumentException("非法文件路径");
+        }
+        try {
+            Files.createDirectories(projectDirectory);
+            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException exception) {
+            throw new UncheckedIOException("保存上传文件失败", exception);
+        }
+        return repository.insertImage(
+                UUID.randomUUID(), projectId, originalFilename, storedFilename,
+                file.getContentType(), file.getSize(), trimToNull(label));
+    }
+
+    public List<ImageResponse> listImages(UUID projectId) {
+        getProject(projectId);
+        return repository.findImages(projectId);
+    }
+
+    public ImageResponse getImage(UUID projectId, UUID imageId) {
+        getProject(projectId);
+        return repository.findImage(projectId, imageId)
+                .orElseThrow(() -> new NotFoundException("项目图像不存在: " + imageId));
+    }
+
+    @Transactional
+    public JobResponse createJob(UUID projectId, CreateJobRequest request) {
+        getProject(projectId);
+        String algorithm = request.algorithm().trim().toUpperCase(Locale.ROOT);
+        if (!ALGORITHMS.contains(algorithm)) {
+            throw new IllegalArgumentException("当前 Demo 仅支持 COLMAP_SPARSE 算法");
+        }
+        int imageCount = repository.countImages(projectId);
+        if (imageCount < 2) {
+            throw new IllegalArgumentException("至少上传 2 张图像后才能创建重建任务");
+        }
+        return repository.insertJob(UUID.randomUUID(), projectId, algorithm, imageCount);
+    }
+
+    public List<JobResponse> listJobs(UUID projectId) {
+        getProject(projectId);
+        return repository.findJobs(projectId);
+    }
+
+    public JobResponse getJob(UUID projectId, UUID jobId) {
+        getProject(projectId);
+        return repository.findJob(projectId, jobId)
+                .orElseThrow(() -> new NotFoundException("重建任务不存在: " + jobId));
+    }
+
+    private static String safeOriginalFilename(String filename) {
+        if (filename == null || filename.isBlank()) {
+            return "upload.bin";
+        }
+        return Path.of(filename).getFileName().toString();
+    }
+
+    private static String extensionOf(String filename) {
+        int index = filename.lastIndexOf('.');
+        if (index < 0 || index == filename.length() - 1) {
+            return "";
+        }
+        String extension = filename.substring(index).toLowerCase(Locale.ROOT);
+        return extension.matches("\\.[a-z0-9]{1,10}") ? extension : "";
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
+    }
+}

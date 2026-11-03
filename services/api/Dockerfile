@@ -4,7 +4,8 @@ WORKDIR /workspace
 COPY pom.xml ./pom.xml
 COPY services/api/pom.xml services/api/pom.xml
 COPY services/api/src services/api/src
-RUN mvn -pl services/api -am package -DskipTests
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn -pl services/api -am package -DskipTests
 
 FROM eclipse-temurin:17-jre-alpine
 RUN apk add --no-cache curl
