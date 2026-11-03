@@ -2,6 +2,8 @@
 
 数字文博稀疏三维重建 Demo。当前已具备从项目与图像管理、真实 COLMAP 异步重建，到 PLY 稀疏点云产物下载的完整运行闭环。
 
+项目各阶段的完成记录、验收结果和后续步骤见 [`DEMO_PROGRESS.md`](DEMO_PROGRESS.md)。
+
 ## 模块
 
 - `apps/web`：Vue 3、TypeScript、Three.js、Vite 和 Nginx，提供项目工作台与 PLY 点云查看器。
