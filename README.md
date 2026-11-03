@@ -4,7 +4,7 @@
 
 ## 模块
 
-- `apps/web`：Vue 3、TypeScript、Vite 和 Nginx。
+- `apps/web`：Vue 3、TypeScript、Three.js、Vite 和 Nginx，提供项目工作台与 PLY 点云查看器。
 - `services/api`：Java 17、Spring Boot 3、Flyway 和 Actuator。
 - `services/reconstruction-worker`：Python 3.12、FastAPI 和 COLMAP 3.10，执行 CPU 稀疏重建。
 - `compose.yaml`：本地服务编排和健康检查。
@@ -20,6 +20,8 @@
 - Web：http://localhost:5173
 - API 健康检查：http://localhost:8080/actuator/health/readiness
 - 重建工作进程健康检查：http://localhost:8001/health
+
+Web 工作台支持创建项目、批量上传图片、启动 COLMAP、轮询任务状态、下载 PLY，并通过鼠标旋转、平移和缩放查看稀疏点云。Nginx 将 `/api` 同源代理到 Spring Boot 服务。
 
 ## 业务 API
 
