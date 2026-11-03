@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: project-design-demo-api
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/project_design_demo}
+    username: ${DB_USERNAME:project_design}
+    password: ${DB_PASSWORD:project_design_local}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    validate-migration-naming: true
+
+server:
+  port: 8080
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+      group:
+        readiness:
+          include: readinessState,db
+        liveness:
+          include: livenessState,ping
+
+info:
+  app:
+    name: ${spring.application.name}
+    stage: infrastructure

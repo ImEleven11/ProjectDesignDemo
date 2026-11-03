@@ -1,0 +1,12 @@
+.git
+.idea
+.mvn
+src
+apps
+services/reconstruction-worker
+**/target
+**/node_modules
+**/dist
+**/__pycache__
+.env
+README.md
