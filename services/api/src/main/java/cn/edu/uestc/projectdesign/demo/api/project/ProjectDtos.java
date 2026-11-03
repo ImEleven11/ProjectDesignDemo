@@ -49,7 +49,14 @@ public final class ProjectDtos {
             String status,
             int imageCount,
             String message,
+            String resultPath,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt) {
+    }
+
+    public record WorkerStatusRequest(
+            @NotBlank String status,
+            @Size(max = 4000) String message,
+            @Size(max = 500) String resultPath) {
     }
 }

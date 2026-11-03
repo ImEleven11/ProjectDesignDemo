@@ -16,6 +16,10 @@ spring:
 
 app:
   upload-root: ${UPLOAD_ROOT:./data/uploads}
+  reconstruction-root: ${RECONSTRUCTION_ROOT:./data/reconstruction}
+  worker:
+    base-url: ${WORKER_BASE_URL:http://localhost:8001}
+    token: ${WORKER_TOKEN:demo-worker-local-token}
 
 server:
   port: 8080
@@ -40,4 +44,4 @@ management:
 info:
   app:
     name: ${spring.application.name}
-    stage: domain-api
+    stage: reconstruction-pipeline

@@ -107,7 +107,7 @@ public class ProjectRepository {
         return jdbcClient.sql("""
                         INSERT INTO reconstruction_jobs (id, project_id, algorithm, status, image_count, message)
                         VALUES (:id, :projectId, :algorithm, 'QUEUED', :imageCount, '等待重建工作进程接收')
-                        RETURNING id, project_id, algorithm, status, image_count, message, created_at, updated_at
+                        RETURNING id, project_id, algorithm, status, image_count, message, result_path, created_at, updated_at
                         """)
                 .param("id", id)
                 .param("projectId", projectId)
@@ -119,7 +119,7 @@ public class ProjectRepository {
 
     List<JobResponse> findJobs(UUID projectId) {
         return jdbcClient.sql("""
-                        SELECT id, project_id, algorithm, status, image_count, message, created_at, updated_at
+                        SELECT id, project_id, algorithm, status, image_count, message, result_path, created_at, updated_at
                         FROM reconstruction_jobs WHERE project_id = :projectId ORDER BY created_at DESC
                         """)
                 .param("projectId", projectId)
@@ -129,13 +129,43 @@ public class ProjectRepository {
 
     Optional<JobResponse> findJob(UUID projectId, UUID jobId) {
         return jdbcClient.sql("""
-                        SELECT id, project_id, algorithm, status, image_count, message, created_at, updated_at
+                        SELECT id, project_id, algorithm, status, image_count, message, result_path, created_at, updated_at
                         FROM reconstruction_jobs WHERE project_id = :projectId AND id = :jobId
                         """)
                 .param("projectId", projectId)
                 .param("jobId", jobId)
                 .query(ProjectRepository::mapJob)
                 .optional();
+    }
+
+    Optional<JobResponse> findJob(UUID jobId) {
+        return jdbcClient.sql("""
+                        SELECT id, project_id, algorithm, status, image_count, message, result_path, created_at, updated_at
+                        FROM reconstruction_jobs WHERE id = :jobId
+                        """)
+                .param("jobId", jobId)
+                .query(ProjectRepository::mapJob)
+                .optional();
+    }
+
+    JobResponse updateJob(UUID jobId, String status, String message, String resultPath) {
+        return jdbcClient.sql("""
+                        UPDATE reconstruction_jobs
+                        SET status = :status,
+                            message = :message,
+                            result_path = COALESCE(:resultPath, result_path),
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = :jobId
+                        RETURNING id, project_id, algorithm, status, image_count, message, result_path, created_at, updated_at
+                        """)
+                .param("jobId", jobId)
+                .param("status", status)
+                .param("message", message, Types.VARCHAR)
+                .param("resultPath", resultPath, Types.VARCHAR)
+                .query(ProjectRepository::mapJob)
+                .optional()
+                .orElseThrow(() -> new cn.edu.uestc.projectdesign.demo.api.common.NotFoundException(
+                        "重建任务不存在: " + jobId));
     }
 
     private static ProjectResponse mapProject(ResultSet resultSet, int rowNumber) throws SQLException {
@@ -166,6 +196,7 @@ public class ProjectRepository {
                 resultSet.getString("status"),
                 resultSet.getInt("image_count"),
                 resultSet.getString("message"),
+                resultSet.getString("result_path"),
                 resultSet.getObject("created_at", OffsetDateTime.class),
                 resultSet.getObject("updated_at", OffsetDateTime.class));
     }

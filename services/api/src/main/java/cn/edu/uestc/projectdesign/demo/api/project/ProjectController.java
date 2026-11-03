@@ -1,12 +1,15 @@
 package cn.edu.uestc.projectdesign.demo.api.project;
 
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
 
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpHeaders;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -92,5 +95,16 @@ public class ProjectController {
             @PathVariable("projectId") UUID projectId,
             @PathVariable("jobId") UUID jobId) {
         return service.getJob(projectId, jobId);
+    }
+
+    @GetMapping("/{projectId}/jobs/{jobId}/result")
+    ResponseEntity<FileSystemResource> downloadJobResult(
+            @PathVariable("projectId") UUID projectId,
+            @PathVariable("jobId") UUID jobId) {
+        Path result = service.getJobResult(projectId, jobId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("application/octet-stream"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"sparse.ply\"")
+                .body(new FileSystemResource(result));
     }
 }

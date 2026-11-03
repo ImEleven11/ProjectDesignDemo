@@ -28,6 +28,9 @@ services:
       DB_USERNAME: ${POSTGRES_USER:-project_design}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-project_design_local}
       UPLOAD_ROOT: /data/uploads
+      RECONSTRUCTION_ROOT: /data/reconstruction
+      WORKER_BASE_URL: http://reconstruction-worker:8001
+      WORKER_TOKEN: ${WORKER_TOKEN:-demo-worker-local-token}
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:
@@ -35,6 +38,7 @@ services:
         condition: service_healthy
     volumes:
       - api-upload-data:/data/uploads
+      - reconstruction-data:/data/reconstruction:ro
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/actuator/health/readiness"]
       interval: 10s
@@ -48,10 +52,15 @@ services:
       context: services/reconstruction-worker
     environment:
       WORKER_DATA_ROOT: /data
+      API_BASE_URL: http://api:8080
+      WORKER_TOKEN: ${WORKER_TOKEN:-demo-worker-local-token}
     ports:
       - "${WORKER_PORT:-8001}:8001"
     volumes:
       - reconstruction-data:/data
+    depends_on:
+      api:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=3)"]
       interval: 10s

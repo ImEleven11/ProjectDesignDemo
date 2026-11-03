@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -27,11 +28,17 @@ public class ProjectService {
     private static final Set<String> ALGORITHMS = Set.of("COLMAP_SPARSE");
 
     private final ProjectRepository repository;
+    private final ApplicationEventPublisher eventPublisher;
     private final Path uploadRoot;
+    private final Path reconstructionRoot;
 
-    public ProjectService(ProjectRepository repository, @Value("${app.upload-root}") String uploadRoot) {
+    public ProjectService(ProjectRepository repository, ApplicationEventPublisher eventPublisher,
+            @Value("${app.upload-root}") String uploadRoot,
+            @Value("${app.reconstruction-root}") String reconstructionRoot) {
         this.repository = repository;
+        this.eventPublisher = eventPublisher;
         this.uploadRoot = Path.of(uploadRoot).toAbsolutePath().normalize();
+        this.reconstructionRoot = Path.of(reconstructionRoot).toAbsolutePath().normalize();
     }
 
     @Transactional
@@ -98,7 +105,9 @@ public class ProjectService {
         if (imageCount < 2) {
             throw new IllegalArgumentException("至少上传 2 张图像后才能创建重建任务");
         }
-        return repository.insertJob(UUID.randomUUID(), projectId, algorithm, imageCount);
+        JobResponse job = repository.insertJob(UUID.randomUUID(), projectId, algorithm, imageCount);
+        eventPublisher.publishEvent(new ReconstructionDispatcher.JobCreated(job.id(), projectId, imageCount));
+        return job;
     }
 
     public List<JobResponse> listJobs(UUID projectId) {
@@ -110,6 +119,18 @@ public class ProjectService {
         getProject(projectId);
         return repository.findJob(projectId, jobId)
                 .orElseThrow(() -> new NotFoundException("重建任务不存在: " + jobId));
+    }
+
+    public Path getJobResult(UUID projectId, UUID jobId) {
+        JobResponse job = getJob(projectId, jobId);
+        if (!"SUCCEEDED".equals(job.status()) || job.resultPath() == null) {
+            throw new IllegalArgumentException("任务尚未生成可下载的重建结果");
+        }
+        Path result = reconstructionRoot.resolve(job.resultPath()).normalize();
+        if (!result.startsWith(reconstructionRoot) || !Files.isRegularFile(result)) {
+            throw new NotFoundException("重建结果文件不存在: " + jobId);
+        }
+        return result;
     }
 
     private static String safeOriginalFilename(String filename) {

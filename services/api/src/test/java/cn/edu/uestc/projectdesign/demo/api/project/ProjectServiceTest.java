@@ -7,6 +7,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.context.ApplicationEventPublisher;
 
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.CreateJobRequest;
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.ProjectResponse;
@@ -21,7 +22,7 @@ class ProjectServiceTest {
     @Test
     void rejectsAJobWhenTheProjectHasFewerThanTwoImages() {
         ProjectRepository repository = mock(ProjectRepository.class);
-        ProjectService service = new ProjectService(repository, uploadRoot.toString());
+        ProjectService service = service(repository);
         UUID projectId = UUID.randomUUID();
         when(repository.findProject(projectId)).thenReturn(java.util.Optional.of(project(projectId)));
         when(repository.countImages(projectId)).thenReturn(1);
@@ -34,7 +35,7 @@ class ProjectServiceTest {
     @Test
     void rejectsAnEmptyUpload() {
         ProjectRepository repository = mock(ProjectRepository.class);
-        ProjectService service = new ProjectService(repository, uploadRoot.toString());
+        ProjectService service = service(repository);
         UUID projectId = UUID.randomUUID();
         when(repository.findProject(projectId)).thenReturn(java.util.Optional.of(project(projectId)));
         MockMultipartFile file = new MockMultipartFile("file", "empty.jpg", "image/jpeg", new byte[0]);
@@ -46,5 +47,13 @@ class ProjectServiceTest {
 
     private static ProjectResponse project(UUID id) {
         return new ProjectResponse(id, "测试文物", null, "器物", OffsetDateTime.now());
+    }
+
+    private ProjectService service(ProjectRepository repository) {
+        return new ProjectService(
+                repository,
+                mock(ApplicationEventPublisher.class),
+                uploadRoot.toString(),
+                uploadRoot.resolve("results").toString());
     }
 }
