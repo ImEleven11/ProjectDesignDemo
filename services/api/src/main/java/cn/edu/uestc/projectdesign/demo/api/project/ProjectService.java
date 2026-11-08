@@ -22,6 +22,8 @@ import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.CreateProj
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.ImageResponse;
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.JobResponse;
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.ProjectResponse;
+import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.UpdateProjectRequest;
+import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.ArtifactResponse;
 
 @Service
 public class ProjectService {
@@ -50,7 +52,10 @@ public class ProjectService {
                 UUID.randomUUID(),
                 request.name().trim(),
                 trimToNull(request.description()),
-                request.heritageType().trim());
+                request.heritageType().trim(),
+                trimToNull(request.collectionCode()), trimToNull(request.era()),
+                trimToNull(request.material()), trimToNull(request.dimensions()),
+                trimToNull(request.provenance()));
     }
 
     public List<ProjectResponse> listProjects() {
@@ -60,6 +65,30 @@ public class ProjectService {
     public ProjectResponse getProject(UUID projectId) {
         return repository.findProject(projectId)
                 .orElseThrow(() -> new NotFoundException("文博项目不存在: " + projectId));
+    }
+
+    @Transactional
+    public ProjectResponse updateProject(UUID projectId, UpdateProjectRequest request) {
+        getProject(projectId);
+        return repository.updateProject(projectId, request.name().trim(), trimToNull(request.description()),
+                request.heritageType().trim(), trimToNull(request.collectionCode()), trimToNull(request.era()),
+                trimToNull(request.material()), trimToNull(request.dimensions()), trimToNull(request.provenance()));
+    }
+
+    @Transactional
+    public void deleteProject(UUID projectId) {
+        getProject(projectId);
+        if (repository.countActiveJobs(projectId) > 0) {
+            throw new IllegalArgumentException("存在运行中的重建任务，暂不能删除项目");
+        }
+        List<JobResponse> jobs = repository.findJobs(projectId);
+        if (repository.deleteProject(projectId) != 1) {
+            throw new NotFoundException("文博项目不存在: " + projectId);
+        }
+        deleteTree(uploadRoot.resolve(projectId.toString()), uploadRoot);
+        for (JobResponse job : jobs) {
+            deleteTree(reconstructionRoot.resolve("jobs").resolve(job.id().toString()), reconstructionRoot);
+        }
     }
 
     @Transactional
@@ -211,6 +240,84 @@ public class ProjectService {
             return content.length() <= limit ? content : content.substring(content.length() - limit);
         } catch (IOException exception) {
             throw new UncheckedIOException("读取任务日志失败", exception);
+        }
+    }
+
+    @Transactional
+    public List<ArtifactResponse> listArtifacts(UUID projectId) {
+        getProject(projectId);
+        return repository.findArtifacts(projectId).stream().map(this::hydrateArtifactMetrics).toList();
+    }
+
+    private ArtifactResponse hydrateArtifactMetrics(ArtifactResponse artifact) {
+        if (artifact.sizeBytes() > 0 && (artifact.pointCount() > 0 || artifact.faceCount() > 0)) {
+            return artifact;
+        }
+        try {
+            Path result = resolveReconstructionArtifact(artifact.resultPath(), artifact.jobId());
+            long pointCount = artifact.pointCount();
+            long faceCount = artifact.faceCount();
+            Path metadataPath = result.getParent().resolve("result.json");
+            if (Files.isRegularFile(metadataPath)) {
+                String metadata = Files.readString(metadataPath);
+                pointCount = jsonNumber(metadata, "pointCount", pointCount);
+                faceCount = jsonNumber(metadata, "faceCount", faceCount);
+            }
+            return repository.updateArtifactMetrics(artifact.id(), pointCount, faceCount, Files.size(result));
+        } catch (IOException | RuntimeException ignored) {
+            return artifact;
+        }
+    }
+
+    private static long jsonNumber(String json, String field, long fallback) {
+        var matcher = java.util.regex.Pattern.compile(
+                "\\\"" + java.util.regex.Pattern.quote(field) + "\\\"\\s*:\\s*(\\d+)")
+                .matcher(json);
+        return matcher.find() ? Long.parseLong(matcher.group(1)) : fallback;
+    }
+
+    @Transactional
+    public ArtifactResponse renameArtifact(UUID projectId, UUID artifactId, String name) {
+        getProject(projectId);
+        return repository.renameArtifact(projectId, artifactId, name.trim());
+    }
+
+    @Transactional
+    public ArtifactResponse selectArtifact(UUID projectId, UUID artifactId) {
+        getProject(projectId);
+        repository.findArtifact(projectId, artifactId)
+                .orElseThrow(() -> new NotFoundException("重建成果不存在: " + artifactId));
+        return repository.selectArtifact(projectId, artifactId);
+    }
+
+    @Transactional
+    public void deleteArtifact(UUID projectId, UUID artifactId) {
+        getProject(projectId);
+        ArtifactResponse artifact = repository.findArtifact(projectId, artifactId)
+                .orElseThrow(() -> new NotFoundException("重建成果不存在: " + artifactId));
+        if (repository.deleteArtifact(projectId, artifactId) != 1) {
+            throw new NotFoundException("重建成果不存在: " + artifactId);
+        }
+        repository.deleteCompletedJob(projectId, artifact.jobId());
+        repository.selectLatestArtifactIfNone(projectId);
+        deleteTree(reconstructionRoot.resolve("jobs").resolve(artifact.jobId().toString()), reconstructionRoot);
+    }
+
+    private static void deleteTree(Path target, Path allowedRoot) {
+        Path normalized = target.toAbsolutePath().normalize();
+        if (!normalized.startsWith(allowedRoot) || normalized.equals(allowedRoot) || !Files.exists(normalized)) {
+            return;
+        }
+        try (var paths = Files.walk(normalized)) {
+            paths.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException exception) {
+                    throw new UncheckedIOException(exception);
+                }
+            });
+        } catch (IOException exception) {
+            throw new UncheckedIOException("删除项目文件失败", exception);
         }
     }
 

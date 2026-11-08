@@ -20,8 +20,10 @@ class ProjectControllerTest {
     void bindsTheProjectIdPathVariable() throws Exception {
         ProjectService service = mock(ProjectService.class);
         UUID projectId = UUID.randomUUID();
+        OffsetDateTime now = OffsetDateTime.now();
         when(service.getProject(projectId)).thenReturn(new ProjectResponse(
-                projectId, "测试项目", null, "器物", OffsetDateTime.now()));
+                projectId, "测试项目", null, "器物", "BW-001", "商代", "青铜",
+                "高 20cm", "成都", now, now));
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(new ProjectController(service)).build();
 
         mockMvc.perform(get("/api/projects/{projectId}", projectId))

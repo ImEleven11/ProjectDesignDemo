@@ -109,6 +109,33 @@ class ProjectServiceTest {
     }
 
     @Test
+    void blocksProjectDeletionWhileAJobIsActive() {
+        ProjectRepository repository = mock(ProjectRepository.class);
+        ProjectService service = service(repository);
+        UUID projectId = UUID.randomUUID();
+        when(repository.findProject(projectId)).thenReturn(java.util.Optional.of(project(projectId)));
+        when(repository.countActiveJobs(projectId)).thenReturn(1);
+
+        assertThatThrownBy(() -> service.deleteProject(projectId))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("运行中的重建任务");
+    }
+
+    @Test
+    void rejectsSelectingAnArtifactOutsideTheProject() {
+        ProjectRepository repository = mock(ProjectRepository.class);
+        ProjectService service = service(repository);
+        UUID projectId = UUID.randomUUID();
+        UUID artifactId = UUID.randomUUID();
+        when(repository.findProject(projectId)).thenReturn(java.util.Optional.of(project(projectId)));
+        when(repository.findArtifact(projectId, artifactId)).thenReturn(java.util.Optional.empty());
+
+        assertThatThrownBy(() -> service.selectArtifact(projectId, artifactId))
+                .isInstanceOf(cn.edu.uestc.projectdesign.demo.api.common.NotFoundException.class)
+                .hasMessageContaining("重建成果不存在");
+    }
+
+    @Test
     void onlyFailedJobsCanBeRetried() {
         ProjectRepository repository = mock(ProjectRepository.class);
         ProjectService service = service(repository);
@@ -125,7 +152,8 @@ class ProjectServiceTest {
     }
 
     private static ProjectResponse project(UUID id) {
-        return new ProjectResponse(id, "测试文物", null, "器物", OffsetDateTime.now());
+        OffsetDateTime now = OffsetDateTime.now();
+        return new ProjectResponse(id, "测试文物", null, "器物", null, null, null, null, null, now, now);
     }
 
     private ProjectService service(ProjectRepository repository) {

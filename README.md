@@ -1,6 +1,6 @@
 # ProjectDesignDemo
 
-数字文博三维重建 Demo。当前已具备从项目与图像管理、真实 COLMAP 异步重建，到 GLB 表面模型与 PLY 稀疏点云在线查看和下载的完整运行闭环。
+数字文博三维重建 Demo。当前已具备文物档案、图片管理、真实 COLMAP 异步重建、GLB/PLY 在线查看以及模型成果版本管理的完整运行闭环。
 
 项目各阶段的完成记录、验收结果和后续步骤见 [`DEMO_PROGRESS.md`](DEMO_PROGRESS.md)。
 
@@ -25,6 +25,8 @@
 
 Web 工作台支持创建项目、批量上传图片、启动 COLMAP、轮询任务状态、下载 GLB/PLY，并通过鼠标旋转、平移和缩放切换查看表面模型与稀疏点云。Nginx 将 `/api` 同源代理到 Spring Boot 服务。
 
+每个项目可记录藏品编号、年代、材质、尺寸、来源与简介。每次成功重建都会自动形成可追溯成果版本，记录格式、点数、面数、文件大小和生成时间；用户可重命名、删除成果并选择当前展示版本。
+
 ## 业务 API
 
 当前最小业务链路为：创建文博项目 → 上传至少三张图像 → 创建 `COLMAP_MESH` 表面重建任务 → Worker 异步执行特征提取、穷举匹配和增量建图 → 使用 CPU 生成闭合三角表面 → 查询任务状态并查看或下载 GLB/PLY。
@@ -39,6 +41,12 @@ Web 工作台支持创建项目、批量上传图片、启动 COLMAP、轮询任
 | `POST` | `/api/projects` | 创建文博项目 |
 | `GET` | `/api/projects` | 查询项目列表 |
 | `GET` | `/api/projects/{projectId}` | 查询项目详情 |
+| `PATCH` | `/api/projects/{projectId}` | 编辑文物档案与项目名称 |
+| `DELETE` | `/api/projects/{projectId}` | 删除非运行中的项目及其文件 |
+| `GET` | `/api/projects/{projectId}/artifacts` | 查询模型成果版本及技术元数据 |
+| `PATCH` | `/api/projects/{projectId}/artifacts/{artifactId}` | 重命名成果版本 |
+| `POST` | `/api/projects/{projectId}/artifacts/{artifactId}/select` | 设置当前展示版本 |
+| `DELETE` | `/api/projects/{projectId}/artifacts/{artifactId}` | 删除成果版本及对应文件 |
 | `POST` | `/api/projects/{projectId}/images` | 以 multipart 形式上传一张图像 |
 | `GET` | `/api/projects/{projectId}/images` | 查询项目图像列表 |
 | `GET` | `/api/projects/{projectId}/images/{imageId}` | 查询图像元数据 |
@@ -58,7 +66,12 @@ Web 工作台支持创建项目、批量上传图片、启动 COLMAP、轮询任
 {
   "name": "青铜器试验项目",
   "description": "用于稀疏重建流程验证",
-  "heritageType": "器物"
+  "heritageType": "器物",
+  "collectionCode": "BW-2026-001",
+  "era": "商代晚期",
+  "material": "青铜",
+  "dimensions": "高 32 cm，口径 18 cm",
+  "provenance": "教学数字文博示范藏品"
 }
 ```
 

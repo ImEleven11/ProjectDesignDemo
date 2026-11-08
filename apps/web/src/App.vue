@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { api } from './api'
-import type { HeritageProject, ProjectImage, ReconstructionJob } from './types'
+import type { HeritageProject, ProjectImage, ReconstructionArtifact, ReconstructionJob } from './types'
 
 const ReconstructionViewer = defineAsyncComponent(() => import('./components/ReconstructionViewer.vue'))
 
 const projects = ref<HeritageProject[]>([])
 const images = ref<ProjectImage[]>([])
 const jobs = ref<ReconstructionJob[]>([])
+const artifacts = ref<ReconstructionArtifact[]>([])
 const selectedProjectId = ref('')
 const selectedJobId = ref('')
 const showProjectForm = ref(false)
+const editingArchive = ref(false)
 const loading = ref(true)
 const busy = ref(false)
 const uploadProgress = ref('')
@@ -18,10 +20,13 @@ const errorMessage = ref('')
 const jobLog = ref('')
 const showJobLog = ref(false)
 const logLoading = ref(false)
-const projectForm = ref({ name: '', description: '', heritageType: '器物' })
+const emptyProjectForm = () => ({ name: '', description: '', heritageType: '器物', collectionCode: '', era: '', material: '', dimensions: '', provenance: '' })
+const projectForm = ref(emptyProjectForm())
+const archiveForm = ref(emptyProjectForm())
 
 const selectedProject = computed(() => projects.value.find((project) => project.id === selectedProjectId.value))
 const selectedJob = computed(() => jobs.value.find((job) => job.id === selectedJobId.value))
+const selectedArtifact = computed(() => artifacts.value.find((artifact) => artifact.jobId === selectedJobId.value))
 const resultUrl = computed(() => {
   if (!selectedJob.value || selectedJob.value.status !== 'SUCCEEDED') return undefined
   return api.jobResultUrl(selectedProjectId.value, selectedJob.value.id, selectedJob.value.updatedAt)
@@ -54,15 +59,20 @@ async function loadProjectData() {
   if (!selectedProjectId.value) {
     images.value = []
     jobs.value = []
+    artifacts.value = []
     return
   }
-  const [nextImages, nextJobs] = await Promise.all([
+  const [nextImages, nextJobs, nextArtifacts] = await Promise.all([
     api.listImages(selectedProjectId.value),
     api.listJobs(selectedProjectId.value),
+    api.listArtifacts(selectedProjectId.value),
   ])
   images.value = nextImages
   jobs.value = nextJobs
-  if (!jobs.value.some((job) => job.id === selectedJobId.value)) selectedJobId.value = jobs.value[0]?.id ?? ''
+  artifacts.value = nextArtifacts
+  if (!jobs.value.some((job) => job.id === selectedJobId.value)) {
+    selectedJobId.value = artifacts.value.find((artifact) => artifact.current)?.jobId ?? jobs.value[0]?.id ?? ''
+  }
 }
 
 async function createProject() {
@@ -72,10 +82,70 @@ async function createProject() {
     const created = await api.createProject(projectForm.value)
     projects.value.unshift(created)
     selectedProjectId.value = created.id
-    projectForm.value = { name: '', description: '', heritageType: '器物' }
+    projectForm.value = emptyProjectForm()
     showProjectForm.value = false
   })
   busy.value = false
+}
+
+function beginArchiveEdit() {
+  if (!selectedProject.value) return
+  archiveForm.value = {
+    name: selectedProject.value.name, description: selectedProject.value.description ?? '',
+    heritageType: selectedProject.value.heritageType, collectionCode: selectedProject.value.collectionCode ?? '',
+    era: selectedProject.value.era ?? '', material: selectedProject.value.material ?? '',
+    dimensions: selectedProject.value.dimensions ?? '', provenance: selectedProject.value.provenance ?? '',
+  }
+  editingArchive.value = true
+}
+
+async function saveArchive() {
+  if (!selectedProjectId.value || !archiveForm.value.name.trim()) return
+  busy.value = true
+  await run(async () => {
+    const updated = await api.updateProject(selectedProjectId.value, archiveForm.value)
+    projects.value = projects.value.map((project) => project.id === updated.id ? updated : project)
+    editingArchive.value = false
+  })
+  busy.value = false
+}
+
+async function deleteCurrentProject() {
+  if (!selectedProject.value || !window.confirm(`确认删除项目“${selectedProject.value.name}”及全部图片和成果？`)) return
+  busy.value = true
+  await run(async () => {
+    await api.deleteProject(selectedProject.value!.id)
+    projects.value = projects.value.filter((project) => project.id !== selectedProjectId.value)
+    selectedProjectId.value = projects.value[0]?.id ?? ''
+  })
+  busy.value = false
+}
+
+async function selectArtifact(artifact: ReconstructionArtifact) {
+  if (!selectedProjectId.value) return
+  await run(async () => {
+    await api.selectArtifact(selectedProjectId.value, artifact.id)
+    artifacts.value = artifacts.value.map((item) => ({ ...item, current: item.id === artifact.id }))
+    selectedJobId.value = artifact.jobId
+  })
+}
+
+async function renameArtifact(artifact: ReconstructionArtifact) {
+  const name = window.prompt('成果名称', artifact.name)?.trim()
+  if (!name || !selectedProjectId.value) return
+  await run(async () => {
+    const updated = await api.renameArtifact(selectedProjectId.value, artifact.id, name)
+    artifacts.value = artifacts.value.map((item) => item.id === updated.id ? updated : item)
+  })
+}
+
+async function deleteArtifact(artifact: ReconstructionArtifact) {
+  if (!selectedProjectId.value || !window.confirm(`确认删除成果“${artifact.name}”及模型文件？`)) return
+  await run(async () => {
+    await api.deleteArtifact(selectedProjectId.value, artifact.id)
+    artifacts.value = await api.listArtifacts(selectedProjectId.value)
+    selectedJobId.value = artifacts.value.find((item) => item.current)?.jobId ?? jobs.value[0]?.id ?? ''
+  })
 }
 
 async function uploadFiles(event: Event) {
@@ -165,6 +235,7 @@ function formatBytes(value: number) {
 
 watch(selectedProjectId, () => {
   selectedJobId.value = ''
+  editingArchive.value = false
   void run(loadProjectData)
 })
 
@@ -225,10 +296,34 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
           <h1>{{ selectedProject.name }}</h1>
           <p>{{ selectedProject.description || '通过多视角影像构建可交互的文物表面模型与稀疏点云。' }}</p>
         </div>
-        <div class="metric-strip">
-          <span><strong>{{ images.length }}</strong> 张影像</span>
-          <span><strong>{{ jobs.length }}</strong> 次任务</span>
-          <span><strong>{{ jobs.filter((job) => job.status === 'SUCCEEDED').length }}</strong> 个模型</span>
+        <div class="heading-tools">
+          <div class="metric-strip">
+            <span><strong>{{ images.length }}</strong> 张影像</span>
+            <span><strong>{{ jobs.length }}</strong> 次任务</span>
+            <span><strong>{{ artifacts.length }}</strong> 个版本</span>
+          </div>
+          <div class="archive-actions"><button type="button" @click="beginArchiveEdit">编辑档案</button><button class="danger" type="button" :disabled="busy || hasActiveJob" @click="deleteCurrentProject">删除项目</button></div>
+        </div>
+      </section>
+
+      <section v-if="selectedProject" class="archive-panel panel">
+        <form v-if="editingArchive" class="archive-form" @submit.prevent="saveArchive">
+          <label>项目名称<input v-model="archiveForm.name" maxlength="160" required /></label>
+          <label>藏品编号<input v-model="archiveForm.collectionCode" maxlength="120" placeholder="如：BW-2026-001" /></label>
+          <label>文物类型<input v-model="archiveForm.heritageType" maxlength="80" required /></label>
+          <label>年代<input v-model="archiveForm.era" maxlength="160" placeholder="如：商代晚期" /></label>
+          <label>材质<input v-model="archiveForm.material" maxlength="240" placeholder="如：青铜" /></label>
+          <label>尺寸<input v-model="archiveForm.dimensions" maxlength="240" placeholder="如：高 32 cm，口径 18 cm" /></label>
+          <label class="wide">来源<input v-model="archiveForm.provenance" maxlength="500" placeholder="收藏、出土或征集来源" /></label>
+          <label class="wide">文物简介<textarea v-model="archiveForm.description" maxlength="4000" rows="3" /></label>
+          <div class="wide form-actions"><button type="button" @click="editingArchive = false">取消</button><button class="primary" type="submit" :disabled="busy">保存档案</button></div>
+        </form>
+        <div v-else class="archive-summary">
+          <span><small>藏品编号</small><strong>{{ selectedProject.collectionCode || '待补充' }}</strong></span>
+          <span><small>年代</small><strong>{{ selectedProject.era || '待考证' }}</strong></span>
+          <span><small>材质</small><strong>{{ selectedProject.material || '待补充' }}</strong></span>
+          <span><small>尺寸</small><strong>{{ selectedProject.dimensions || '待测量' }}</strong></span>
+          <span><small>来源</small><strong>{{ selectedProject.provenance || '待补充' }}</strong></span>
         </div>
       </section>
 
@@ -286,9 +381,25 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
             <a v-if="resultUrl" :href="resultUrl" :download="hasSurfaceModel ? 'model.glb' : 'sparse.ply'">下载 {{ hasSurfaceModel ? 'GLB' : 'PLY' }}</a>
           </div>
           <ReconstructionViewer :result-url="resultUrl" :point-cloud-url="pointCloudUrl" :result-kind="resultKind" />
+          <div class="artifact-manager">
+            <div class="artifact-title"><strong>成果版本</strong><span>当前展示版本会用于后续公开发布</span></div>
+            <div v-if="artifacts.length" class="artifact-list">
+              <div v-for="artifact in artifacts" :key="artifact.id" :class="['artifact-row', { current: artifact.current }]">
+                <button class="artifact-select" type="button" @click="selectArtifact(artifact)">
+                  <span><b>v{{ artifact.versionNumber }}</b><strong>{{ artifact.name }}</strong></span>
+                  <small>{{ artifact.format }} · {{ artifact.pointCount.toLocaleString() }} 点 · {{ artifact.faceCount.toLocaleString() }} 面 · {{ formatBytes(artifact.sizeBytes) }}</small>
+                </button>
+                <i>{{ artifact.current ? '当前' : formatDate(artifact.createdAt) }}</i>
+                <button type="button" aria-label="重命名成果" @click="renameArtifact(artifact)">✎</button>
+                <button class="danger" type="button" aria-label="删除成果" @click="deleteArtifact(artifact)">×</button>
+              </div>
+            </div>
+            <p v-else>成功完成一次重建后，模型会作为可追溯版本保存在这里。</p>
+          </div>
           <div class="viewer-footer">
             <span>左键旋转 · 右键平移 · 滚轮缩放</span>
-            <span v-if="selectedJob">任务 {{ selectedJob.id.slice(0, 8) }}</span>
+            <span v-if="selectedArtifact">v{{ selectedArtifact.versionNumber }} · {{ selectedArtifact.name }}</span>
+            <span v-else-if="selectedJob">任务 {{ selectedJob.id.slice(0, 8) }}</span>
           </div>
         </article>
       </section>

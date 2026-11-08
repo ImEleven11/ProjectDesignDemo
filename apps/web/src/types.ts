@@ -3,7 +3,29 @@ export interface HeritageProject {
   name: string
   description: string | null
   heritageType: string
+  collectionCode: string | null
+  era: string | null
+  material: string | null
+  dimensions: string | null
+  provenance: string | null
   createdAt: string
+  updatedAt: string
+}
+
+export interface ReconstructionArtifact {
+  id: string
+  projectId: string
+  jobId: string
+  name: string
+  versionNumber: number
+  format: string
+  pointCount: number
+  faceCount: number
+  sizeBytes: number
+  resultPath: string
+  current: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 export interface ProjectImage {

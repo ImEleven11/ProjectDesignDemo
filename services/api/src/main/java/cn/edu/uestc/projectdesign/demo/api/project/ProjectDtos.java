@@ -13,7 +13,23 @@ public final class ProjectDtos {
     public record CreateProjectRequest(
             @NotBlank @Size(max = 160) String name,
             @Size(max = 4000) String description,
-            @NotBlank @Size(max = 80) String heritageType) {
+            @NotBlank @Size(max = 80) String heritageType,
+            @Size(max = 120) String collectionCode,
+            @Size(max = 160) String era,
+            @Size(max = 240) String material,
+            @Size(max = 240) String dimensions,
+            @Size(max = 500) String provenance) {
+    }
+
+    public record UpdateProjectRequest(
+            @NotBlank @Size(max = 160) String name,
+            @Size(max = 4000) String description,
+            @NotBlank @Size(max = 80) String heritageType,
+            @Size(max = 120) String collectionCode,
+            @Size(max = 160) String era,
+            @Size(max = 240) String material,
+            @Size(max = 240) String dimensions,
+            @Size(max = 500) String provenance) {
     }
 
     public record ProjectResponse(
@@ -21,7 +37,13 @@ public final class ProjectDtos {
             String name,
             String description,
             String heritageType,
-            OffsetDateTime createdAt) {
+            String collectionCode,
+            String era,
+            String material,
+            String dimensions,
+            String provenance,
+            OffsetDateTime createdAt,
+            OffsetDateTime updatedAt) {
     }
 
     public record ImageResponse(
@@ -57,6 +79,28 @@ public final class ProjectDtos {
     public record WorkerStatusRequest(
             @NotBlank String status,
             @Size(max = 4000) String message,
-            @Size(max = 500) String resultPath) {
+            @Size(max = 500) String resultPath,
+            Long pointCount,
+            Long faceCount,
+            Long sizeBytes) {
+    }
+
+    public record ArtifactResponse(
+            UUID id,
+            UUID projectId,
+            UUID jobId,
+            String name,
+            int versionNumber,
+            String format,
+            long pointCount,
+            long faceCount,
+            long sizeBytes,
+            String resultPath,
+            boolean current,
+            OffsetDateTime createdAt,
+            OffsetDateTime updatedAt) {
+    }
+
+    public record RenameArtifactRequest(@NotBlank @Size(max = 160) String name) {
     }
 }

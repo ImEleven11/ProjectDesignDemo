@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,6 +28,9 @@ import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.CreateProj
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.ImageResponse;
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.JobResponse;
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.ProjectResponse;
+import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.UpdateProjectRequest;
+import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.ArtifactResponse;
+import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.RenameArtifactRequest;
 
 @RestController
 @RequestMapping("/api/projects")
@@ -52,6 +56,43 @@ public class ProjectController {
     @GetMapping("/{projectId}")
     ProjectResponse getProject(@PathVariable("projectId") UUID projectId) {
         return service.getProject(projectId);
+    }
+
+    @PatchMapping("/{projectId}")
+    ProjectResponse updateProject(@PathVariable("projectId") UUID projectId,
+            @Valid @RequestBody UpdateProjectRequest request) {
+        return service.updateProject(projectId, request);
+    }
+
+    @DeleteMapping("/{projectId}")
+    ResponseEntity<Void> deleteProject(@PathVariable("projectId") UUID projectId) {
+        service.deleteProject(projectId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{projectId}/artifacts")
+    List<ArtifactResponse> listArtifacts(@PathVariable("projectId") UUID projectId) {
+        return service.listArtifacts(projectId);
+    }
+
+    @PatchMapping("/{projectId}/artifacts/{artifactId}")
+    ArtifactResponse renameArtifact(@PathVariable("projectId") UUID projectId,
+            @PathVariable("artifactId") UUID artifactId,
+            @Valid @RequestBody RenameArtifactRequest request) {
+        return service.renameArtifact(projectId, artifactId, request.name());
+    }
+
+    @PostMapping("/{projectId}/artifacts/{artifactId}/select")
+    ArtifactResponse selectArtifact(@PathVariable("projectId") UUID projectId,
+            @PathVariable("artifactId") UUID artifactId) {
+        return service.selectArtifact(projectId, artifactId);
+    }
+
+    @DeleteMapping("/{projectId}/artifacts/{artifactId}")
+    ResponseEntity<Void> deleteArtifact(@PathVariable("projectId") UUID projectId,
+            @PathVariable("artifactId") UUID artifactId) {
+        service.deleteArtifact(projectId, artifactId);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping(path = "/{projectId}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.annotation.Transactional;
 
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.JobResponse;
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.WorkerStatusRequest;
@@ -32,6 +33,7 @@ public class WorkerCallbackController {
     }
 
     @PatchMapping("/{jobId}")
+    @Transactional
     JobResponse update(
             @PathVariable("jobId") UUID jobId,
             @RequestHeader(name = "Authorization", required = false) String authorization,
@@ -44,7 +46,21 @@ public class WorkerCallbackController {
         if ("SUCCEEDED".equals(status) && (request.resultPath() == null || request.resultPath().isBlank())) {
             throw new IllegalArgumentException("成功任务必须提供 resultPath");
         }
-        return repository.updateJob(jobId, status, request.message(), request.resultPath());
+        JobResponse job = repository.updateJob(jobId, status, request.message(), request.resultPath());
+        if ("SUCCEEDED".equals(status)) {
+            String format = request.resultPath().substring(request.resultPath().lastIndexOf('.') + 1)
+                    .toUpperCase(java.util.Locale.ROOT);
+            repository.clearCurrentArtifacts(job.projectId());
+            repository.insertArtifactForJob(
+                    UUID.randomUUID(), jobId, "重建成果", format,
+                    nonNegative(request.pointCount()), nonNegative(request.faceCount()),
+                    nonNegative(request.sizeBytes()), request.resultPath());
+        }
+        return job;
+    }
+
+    private static long nonNegative(Long value) {
+        return value == null ? 0 : Math.max(0, value);
     }
 
     private void requireWorkerToken(String authorization) {

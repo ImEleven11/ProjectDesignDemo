@@ -108,6 +108,9 @@ def run_reconstruction(request: JobRequest) -> None:
                 "SUCCEEDED",
                 f"COLMAP 重建完成：{result.image_count} 张图像，{detail}",
                 result.result_path,
+                result.point_count,
+                result.face_count,
+                (DATA_ROOT / result.result_path).stat().st_size,
             )
             return
 
@@ -144,6 +147,9 @@ def run_reconstruction(request: JobRequest) -> None:
                 "SUCCEEDED",
                 f"Demo 表面模型生成完成，共 {face_count} 个三角面",
                 relative_result.as_posix(),
+                point_count,
+                face_count,
+                result_path.stat().st_size,
             )
             return
 
@@ -170,6 +176,9 @@ def run_reconstruction(request: JobRequest) -> None:
             "SUCCEEDED",
             f"Demo 稀疏点云生成完成，共 {point_count} 个点",
             relative_result.as_posix(),
+            point_count,
+            0,
+            output_path.stat().st_size,
         )
     except Exception as exception:
         try:
@@ -207,8 +216,23 @@ def create_demo_sparse_cloud(output_path: Path, job_id: UUID, image_count: int) 
     return point_count
 
 
-def callback(job_id: UUID, status_value: str, message: str, result_path: str | None = None) -> None:
-    payload = {"status": status_value, "message": message, "resultPath": result_path}
+def callback(
+    job_id: UUID,
+    status_value: str,
+    message: str,
+    result_path: str | None = None,
+    point_count: int | None = None,
+    face_count: int | None = None,
+    size_bytes: int | None = None,
+) -> None:
+    payload = {
+        "status": status_value,
+        "message": message,
+        "resultPath": result_path,
+        "pointCount": point_count,
+        "faceCount": face_count,
+        "sizeBytes": size_bytes,
+    }
     with httpx.Client(timeout=10.0) as client:
         response = client.patch(
             f"{API_BASE_URL}/internal/jobs/{job_id}",

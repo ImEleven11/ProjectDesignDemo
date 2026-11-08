@@ -1,4 +1,6 @@
-import type { ApiError, HeritageProject, ProjectImage, ReconstructionJob } from './types'
+import type { ApiError, HeritageProject, ProjectImage, ReconstructionArtifact, ReconstructionJob } from './types'
+
+export type ProjectPayload = Omit<HeritageProject, 'id' | 'createdAt' | 'updatedAt'>
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init)
@@ -39,12 +41,34 @@ async function errorMessage(response: Response): Promise<string> {
 export const api = {
   listProjects: () => request<HeritageProject[]>('/api/projects'),
 
-  createProject: (payload: { name: string; description: string; heritageType: string }) =>
+  createProject: (payload: ProjectPayload) =>
     request<HeritageProject>('/api/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     }),
+
+  updateProject: (projectId: string, payload: ProjectPayload) =>
+    request<HeritageProject>(`/api/projects/${projectId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    }),
+
+  deleteProject: (projectId: string) =>
+    requestVoid(`/api/projects/${projectId}`, { method: 'DELETE' }),
+
+  listArtifacts: (projectId: string) =>
+    request<ReconstructionArtifact[]>(`/api/projects/${projectId}/artifacts`),
+
+  renameArtifact: (projectId: string, artifactId: string, name: string) =>
+    request<ReconstructionArtifact>(`/api/projects/${projectId}/artifacts/${artifactId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+    }),
+
+  selectArtifact: (projectId: string, artifactId: string) =>
+    request<ReconstructionArtifact>(`/api/projects/${projectId}/artifacts/${artifactId}/select`, { method: 'POST' }),
+
+  deleteArtifact: (projectId: string, artifactId: string) =>
+    requestVoid(`/api/projects/${projectId}/artifacts/${artifactId}`, { method: 'DELETE' }),
 
   listImages: (projectId: string) =>
     request<ProjectImage[]>(`/api/projects/${projectId}/images`),
