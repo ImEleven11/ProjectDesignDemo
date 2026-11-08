@@ -17,7 +17,15 @@ def main() -> None:
     parser.add_argument("output", type=Path)
     parser.add_argument("--images", type=int, default=8)
     args = parser.parse_args()
-    args.output.mkdir(parents=True, exist_ok=True)
+    generate_fixture(args.output, args.images)
+    print(f"generated {args.images} images in {args.output.resolve()}")
+
+
+def generate_fixture(output: Path, image_count: int = 8) -> list[Path]:
+    """Generate the deterministic capture set and return its image paths."""
+    if image_count < 2:
+        raise ValueError("image_count must be at least 2")
+    output.mkdir(parents=True, exist_ok=True)
 
     randomizer = random.Random(20261103)
     points = [
@@ -29,8 +37,9 @@ def main() -> None:
         )
         for _ in range(420)
     ]
-    for index in range(args.images):
-        fraction = index / max(args.images - 1, 1)
+    generated: list[Path] = []
+    for index in range(image_count):
+        fraction = index / max(image_count - 1, 1)
         camera = (
             -0.9 + 1.8 * fraction,
             0.18 * math.sin(fraction * math.pi * 2),
@@ -45,8 +54,10 @@ def main() -> None:
                 projected.append((point[2], projection[0], projection[1], point[3]))
         for _, x, y, pattern in sorted(projected, reverse=True):
             draw_marker(pixels, x, y, pattern)
-        write_bmp(args.output / f"capture_{index:02d}.bmp", pixels)
-    print(f"generated {args.images} images in {args.output.resolve()}")
+        image_path = output / f"capture_{index:02d}.bmp"
+        write_bmp(image_path, pixels)
+        generated.append(image_path)
+    return generated
 
 
 def camera_basis(camera: tuple[float, float, float], target: tuple[float, float, float]):

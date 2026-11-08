@@ -10,6 +10,7 @@ dist/
 *.py[cod]
 .pytest_cache/
 .coverage
+.tmp/
 *.tsbuildinfo
 data/
 !.gitkeep
