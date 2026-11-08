@@ -2,7 +2,7 @@
 
 数字文博三维重建 Demo。当前已具备文物档案、图片管理、真实 COLMAP 异步重建、GLB/PLY 在线查看、成果版本管理、发布和独立公开展示的完整运行闭环。
 
-项目各阶段的完成记录、验收结果和后续步骤见 [`DEMO_PROGRESS.md`](DEMO_PROGRESS.md)。
+项目各阶段的完成记录见 [`DEMO_PROGRESS.md`](DEMO_PROGRESS.md)。部署、演示和故障处理见 [`docs/DEMO_DELIVERY.md`](docs/DEMO_DELIVERY.md)，最终交付结果见 [`docs/STAGE10_ACCEPTANCE.md`](docs/STAGE10_ACCEPTANCE.md)。
 
 ## 模块
 
@@ -111,6 +111,22 @@ docker compose down
 ```powershell
 docker compose down --volumes
 ```
+
+## 自动交付验收
+
+对正在运行的环境执行完整业务验收：
+
+```powershell
+python tools/demo_e2e.py --report .tmp/demo-report.json
+```
+
+使用全新容器和数据卷验证一键构建、启动及完整演示链路：
+
+```powershell
+python tools/verify_fresh_install.py --report .tmp/fresh-install-report.json
+```
+
+两个脚本默认都会清理自己创建的临时数据，不影响现有演示项目。
 
 ## 独立验证
 
