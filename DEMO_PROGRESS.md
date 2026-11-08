@@ -122,7 +122,7 @@
 ### 阶段七：完整三维模型生成
 
 状态：已完成
-对应提交：本阶段功能提交
+对应提交：`9fb2807 feat: add surface model reconstruction`
 
 已完成任务：
 
