@@ -21,7 +21,7 @@ export type JobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
 export interface ReconstructionJob {
   id: string
   projectId: string
-  algorithm: 'COLMAP_SPARSE' | 'DEMO_SPARSE'
+  algorithm: 'COLMAP_SPARSE' | 'COLMAP_MESH' | 'COLMAP_DENSE' | 'DEMO_SPARSE' | 'DEMO_MESH'
   status: JobStatus
   imageCount: number
   message: string | null

@@ -25,7 +25,8 @@ import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.ProjectRes
 
 @Service
 public class ProjectService {
-    private static final Set<String> ALGORITHMS = Set.of("COLMAP_SPARSE", "DEMO_SPARSE");
+    private static final Set<String> ALGORITHMS = Set.of(
+            "COLMAP_SPARSE", "COLMAP_MESH", "COLMAP_DENSE", "DEMO_SPARSE", "DEMO_MESH");
     private static final Set<String> IMAGE_EXTENSIONS = Set.of(
             ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp");
 
@@ -142,10 +143,11 @@ public class ProjectService {
         getProject(projectId);
         String algorithm = request.algorithm().trim().toUpperCase(Locale.ROOT);
         if (!ALGORITHMS.contains(algorithm)) {
-            throw new IllegalArgumentException("仅支持 COLMAP_SPARSE 或 DEMO_SPARSE 算法");
+            throw new IllegalArgumentException(
+                    "仅支持 COLMAP_SPARSE、COLMAP_MESH、COLMAP_DENSE、DEMO_SPARSE 或 DEMO_MESH 算法");
         }
         int imageCount = repository.countImages(projectId);
-        int minimumImages = "COLMAP_SPARSE".equals(algorithm) ? 3 : 2;
+        int minimumImages = algorithm.startsWith("COLMAP_") ? 3 : 2;
         if (imageCount < minimumImages) {
             throw new IllegalArgumentException("使用 " + algorithm + " 至少需要 " + minimumImages + " 张图像");
         }
@@ -175,21 +177,28 @@ public class ProjectService {
         return createJob(projectId, new CreateJobRequest(failedJob.algorithm()));
     }
 
-    public Path getJobResult(UUID projectId, UUID jobId) {
+    public ReconstructionArtifact getJobResult(UUID projectId, UUID jobId) {
         JobResponse job = getJob(projectId, jobId);
         if (!"SUCCEEDED".equals(job.status()) || job.resultPath() == null) {
             throw new IllegalArgumentException("任务尚未生成可下载的重建结果");
         }
-        Path result = reconstructionRoot.resolve(job.resultPath()).normalize();
-        if (!result.startsWith(reconstructionRoot) || !Files.isRegularFile(result)) {
-            throw new NotFoundException("重建结果文件不存在: " + jobId);
+        Path result = resolveReconstructionArtifact(job.resultPath(), jobId);
+        return artifact(result);
+    }
+
+    public ReconstructionArtifact getJobPointCloud(UUID projectId, UUID jobId) {
+        JobResponse job = getJob(projectId, jobId);
+        if (!"SUCCEEDED".equals(job.status())) {
+            throw new IllegalArgumentException("任务尚未生成可查看的稀疏点云");
         }
-        return result;
+        Path result = resolveReconstructionArtifact(
+                Path.of("jobs", jobId.toString(), "sparse.ply").toString(), jobId);
+        return artifact(result);
     }
 
     public String getJobLog(UUID projectId, UUID jobId) {
         JobResponse job = getJob(projectId, jobId);
-        if (!"COLMAP_SPARSE".equals(job.algorithm())) {
+        if (!job.algorithm().startsWith("COLMAP_")) {
             throw new IllegalArgumentException("该任务没有 COLMAP 日志");
         }
         Path log = reconstructionRoot.resolve("jobs").resolve(jobId.toString()).resolve("colmap.log").normalize();
@@ -211,6 +220,23 @@ public class ProjectService {
             throw new IllegalArgumentException("非法文件路径");
         }
         return content;
+    }
+
+    private Path resolveReconstructionArtifact(String relativePath, UUID jobId) {
+        Path result = reconstructionRoot.resolve(relativePath).normalize();
+        Path jobDirectory = reconstructionRoot.resolve("jobs").resolve(jobId.toString()).normalize();
+        if (!result.startsWith(jobDirectory) || !Files.isRegularFile(result)) {
+            throw new NotFoundException("重建结果文件不存在: " + jobId);
+        }
+        return result;
+    }
+
+    private static ReconstructionArtifact artifact(Path path) {
+        String filename = path.getFileName().toString();
+        String contentType = filename.toLowerCase(Locale.ROOT).endsWith(".glb")
+                ? "model/gltf-binary"
+                : MediaTypeNames.OCTET_STREAM;
+        return new ReconstructionArtifact(path, filename, contentType);
     }
 
     private static String safeOriginalFilename(String filename) {
@@ -237,6 +263,9 @@ public class ProjectService {
     }
 
     public record ImageContent(Path path, String originalFilename, String contentType) {
+    }
+
+    public record ReconstructionArtifact(Path path, String filename, String contentType) {
     }
 
     private static final class MediaTypeNames {

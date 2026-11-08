@@ -12,7 +12,8 @@ import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.colmap_pipeline import run_colmap_sparse
+from app.colmap_pipeline import run_colmap_reconstruction
+from app.mesh_export import create_demo_mesh
 
 
 SERVICE_NAME = "reconstruction-worker"
@@ -26,7 +27,9 @@ COLMAP_TIMEOUT_SECONDS = int(os.getenv("COLMAP_TIMEOUT_SECONDS", "1800"))
 class JobRequest(BaseModel):
     job_id: UUID = Field(alias="jobId")
     project_id: UUID = Field(alias="projectId")
-    algorithm: Literal["COLMAP_SPARSE", "DEMO_SPARSE"]
+    algorithm: Literal[
+        "COLMAP_SPARSE", "COLMAP_MESH", "COLMAP_DENSE", "DEMO_SPARSE", "DEMO_MESH"
+    ]
     image_count: int = Field(alias="imageCount", ge=2)
 
 
@@ -43,7 +46,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="Project Design Reconstruction Worker",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -75,20 +78,72 @@ def submit_job(
 
 def run_reconstruction(request: JobRequest) -> None:
     try:
-        if request.algorithm == "COLMAP_SPARSE":
-            callback(request.job_id, "RUNNING", "COLMAP 正在提取特征并执行稀疏重建")
-            result = run_colmap_sparse(
+        if request.algorithm.startswith("COLMAP_"):
+            mode = {
+                "COLMAP_SPARSE": "SPARSE",
+                "COLMAP_MESH": "MESH",
+                "COLMAP_DENSE": "DENSE",
+            }[request.algorithm]
+            stage_message = {
+                "SPARSE": "COLMAP 正在提取特征并执行稀疏重建",
+                "MESH": "COLMAP 正在重建稀疏模型并生成彩色表面",
+                "DENSE": "COLMAP 正在执行 CUDA 稠密重建与网格化",
+            }[mode]
+            callback(request.job_id, "RUNNING", stage_message)
+            result = run_colmap_reconstruction(
                 request.job_id,
                 request.project_id,
                 DATA_ROOT,
                 INPUT_ROOT,
                 COLMAP_TIMEOUT_SECONDS,
+                mode,
+            )
+            detail = (
+                f"{result.point_count} 个三维点"
+                if result.face_count == 0
+                else f"{result.point_count} 个三维点，{result.face_count} 个三角面"
             )
             callback(
                 request.job_id,
                 "SUCCEEDED",
-                f"COLMAP 稀疏重建完成：{result.image_count} 张图像，{result.point_count} 个三维点",
+                f"COLMAP 重建完成：{result.image_count} 张图像，{detail}",
                 result.result_path,
+            )
+            return
+
+        if request.algorithm == "DEMO_MESH":
+            callback(request.job_id, "RUNNING", "Demo 正在生成可交互表面模型")
+            relative_directory = Path("jobs") / str(request.job_id)
+            output_directory = (DATA_ROOT / relative_directory).resolve()
+            if DATA_ROOT not in output_directory.parents:
+                raise ValueError("result path escaped data root")
+            output_directory.mkdir(parents=True, exist_ok=True)
+            sparse_path = output_directory / "sparse.ply"
+            point_count = create_demo_sparse_cloud(
+                sparse_path, request.job_id, request.image_count
+            )
+            result_path = output_directory / "model.glb"
+            face_count = create_demo_mesh(result_path)
+            relative_result = relative_directory / "model.glb"
+            metadata = {
+                "jobId": str(request.job_id),
+                "projectId": str(request.project_id),
+                "engine": "DEMO_MESH_V1",
+                "imageCount": request.image_count,
+                "pointCount": point_count,
+                "faceCount": face_count,
+                "resultKind": "SURFACE_MODEL",
+                "resultPath": relative_result.as_posix(),
+                "sparseResultPath": (relative_directory / "sparse.ply").as_posix(),
+            }
+            (output_directory / "result.json").write_text(
+                json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            callback(
+                request.job_id,
+                "SUCCEEDED",
+                f"Demo 表面模型生成完成，共 {face_count} 个三角面",
+                relative_result.as_posix(),
             )
             return
 

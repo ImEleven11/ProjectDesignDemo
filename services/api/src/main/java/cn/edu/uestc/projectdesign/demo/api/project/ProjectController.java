@@ -1,7 +1,6 @@
 package cn.edu.uestc.projectdesign.demo.api.project;
 
 import java.net.URI;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 
@@ -150,10 +149,25 @@ public class ProjectController {
     ResponseEntity<FileSystemResource> downloadJobResult(
             @PathVariable("projectId") UUID projectId,
             @PathVariable("jobId") UUID jobId) {
-        Path result = service.getJobResult(projectId, jobId);
+        ProjectService.ReconstructionArtifact result = service.getJobResult(projectId, jobId);
         return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType("application/octet-stream"))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"sparse.ply\"")
-                .body(new FileSystemResource(result));
+                .contentType(MediaType.parseMediaType(result.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
+                        .filename(result.filename(), java.nio.charset.StandardCharsets.UTF_8)
+                        .build().toString())
+                .body(new FileSystemResource(result.path()));
+    }
+
+    @GetMapping("/{projectId}/jobs/{jobId}/point-cloud")
+    ResponseEntity<FileSystemResource> downloadJobPointCloud(
+            @PathVariable("projectId") UUID projectId,
+            @PathVariable("jobId") UUID jobId) {
+        ProjectService.ReconstructionArtifact result = service.getJobPointCloud(projectId, jobId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(result.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
+                        .filename(result.filename(), java.nio.charset.StandardCharsets.UTF_8)
+                        .build().toString())
+                .body(new FileSystemResource(result.path()));
     }
 }

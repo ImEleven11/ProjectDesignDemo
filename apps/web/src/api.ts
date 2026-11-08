@@ -80,4 +80,10 @@ export const api = {
 
   getJobLog: (projectId: string, jobId: string) =>
     requestText(`/api/projects/${projectId}/jobs/${jobId}/log`),
+
+  jobResultUrl: (projectId: string, jobId: string, version: string) =>
+    `/api/projects/${projectId}/jobs/${jobId}/result?v=${encodeURIComponent(version)}`,
+
+  jobPointCloudUrl: (projectId: string, jobId: string, version: string) =>
+    `/api/projects/${projectId}/jobs/${jobId}/point-cloud?v=${encodeURIComponent(version)}`,
 }

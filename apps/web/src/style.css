@@ -52,6 +52,10 @@ button { color: inherit; }
 .primary:hover:not(:disabled) { background: var(--jade-dark); }
 .primary:disabled { opacity: .45; cursor: not-allowed; }
 .primary.compact { padding: 8px 11px; }
+.secondary { padding: 9px 12px; color: var(--jade); border: 1px solid #9cafaa; background: transparent; cursor: pointer; font-size: 11px; font-weight: 700; }
+.secondary:hover:not(:disabled) { color: var(--jade-dark); border-color: var(--jade-dark); background: #edf0ea; }
+.secondary:disabled { opacity: .45; cursor: not-allowed; }
+.reconstruction-actions { display: flex; gap: 7px; }
 .drop-zone { display: grid; place-items: center; margin: 16px; padding: 24px 15px; text-align: center; border: 1px dashed #b8b5aa; background: #f2f0e9; cursor: pointer; transition: .2s; }
 .drop-zone:hover { border-color: var(--jade); background: #edf1eb; }
 .drop-zone.disabled { pointer-events: none; opacity: .65; }
@@ -102,6 +106,9 @@ button { color: inherit; }
 .viewer-orbit { margin-bottom: 13px; color: #b78a5d; font-size: 48px; }
 .viewer-loading { background: rgb(16 27 29 / 72%); font-size: 12px; }
 .viewer-error { color: #e2a399; font-size: 12px; }
+.viewer-mode { position: absolute; top: 13px; left: 13px; display: flex; padding: 3px; border: 1px solid #39504d; background: rgb(18 34 35 / 82%); }
+.viewer-mode button { padding: 5px 8px; color: #92a5a0; border: 0; background: transparent; cursor: pointer; font-size: 9px; }
+.viewer-mode button.active { color: #fff4df; background: #31504d; }
 .viewer-meta { position: absolute; top: 13px; right: 13px; display: flex; gap: 8px; align-items: center; padding: 6px 7px 6px 10px; color: #b7c5c1; border: 1px solid #39504d; background: rgb(18 34 35 / 78%); font-size: 9px; }
 .viewer-meta button { padding: 4px 7px; color: #decbb1; border: 1px solid #52625f; background: transparent; cursor: pointer; font-size: 9px; }
 .viewer-footer { display: flex; justify-content: space-between; padding: 10px 15px; color: #8a9390; border-top: 1px solid #d8d4ca; font-size: 9px; }

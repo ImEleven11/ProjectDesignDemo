@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch 
 import { api } from './api'
 import type { HeritageProject, ProjectImage, ReconstructionJob } from './types'
 
-const PointCloudViewer = defineAsyncComponent(() => import('./components/PointCloudViewer.vue'))
+const ReconstructionViewer = defineAsyncComponent(() => import('./components/ReconstructionViewer.vue'))
 
 const projects = ref<HeritageProject[]>([])
 const images = ref<ProjectImage[]>([])
@@ -24,8 +24,14 @@ const selectedProject = computed(() => projects.value.find((project) => project.
 const selectedJob = computed(() => jobs.value.find((job) => job.id === selectedJobId.value))
 const resultUrl = computed(() => {
   if (!selectedJob.value || selectedJob.value.status !== 'SUCCEEDED') return undefined
-  return `/api/projects/${selectedProjectId.value}/jobs/${selectedJob.value.id}/result?v=${encodeURIComponent(selectedJob.value.updatedAt)}`
+  return api.jobResultUrl(selectedProjectId.value, selectedJob.value.id, selectedJob.value.updatedAt)
 })
+const hasSurfaceModel = computed(() => Boolean(selectedJob.value && ['COLMAP_MESH', 'COLMAP_DENSE', 'DEMO_MESH'].includes(selectedJob.value.algorithm)))
+const pointCloudUrl = computed(() => {
+  if (!resultUrl.value || !selectedJob.value || !hasSurfaceModel.value) return undefined
+  return api.jobPointCloudUrl(selectedProjectId.value, selectedJob.value.id, selectedJob.value.updatedAt)
+})
+const resultKind = computed<'POINT_CLOUD' | 'SURFACE_MODEL'>(() => hasSurfaceModel.value ? 'SURFACE_MODEL' : 'POINT_CLOUD')
 const hasActiveJob = computed(() => jobs.value.some((job) => ['QUEUED', 'RUNNING'].includes(job.status)))
 const canStartColmap = computed(() => images.value.length >= 3 && !hasActiveJob.value)
 let pollTimer = 0
@@ -139,6 +145,16 @@ function statusText(status: ReconstructionJob['status']) {
   return { QUEUED: '等待中', RUNNING: '重建中', SUCCEEDED: '已完成', FAILED: '失败' }[status]
 }
 
+function algorithmText(algorithm: ReconstructionJob['algorithm']) {
+  return {
+    COLMAP_SPARSE: 'COLMAP 稀疏重建',
+    COLMAP_MESH: 'COLMAP 彩色表面模型',
+    COLMAP_DENSE: 'COLMAP CUDA 稠密模型',
+    DEMO_SPARSE: 'Demo 点云',
+    DEMO_MESH: 'Demo 表面模型',
+  }[algorithm]
+}
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
 }
@@ -176,7 +192,7 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
       <div class="brand-mark">文</div>
       <div class="brand-copy">
         <strong>数智文博 · 三维重建台</strong>
-        <span>ProjectDesignDemo / COLMAP Sparse Reconstruction</span>
+        <span>ProjectDesignDemo / COLMAP Surface Reconstruction</span>
       </div>
       <div class="system-state"><i /> 本地服务在线</div>
     </header>
@@ -207,7 +223,7 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
         <div>
           <p class="eyebrow">{{ selectedProject.heritageType }} / DIGITAL HERITAGE</p>
           <h1>{{ selectedProject.name }}</h1>
-          <p>{{ selectedProject.description || '通过多视角影像构建可交互的文物稀疏三维模型。' }}</p>
+          <p>{{ selectedProject.description || '通过多视角影像构建可交互的文物表面模型与稀疏点云。' }}</p>
         </div>
         <div class="metric-strip">
           <span><strong>{{ images.length }}</strong> 张影像</span>
@@ -242,19 +258,22 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
           <article class="panel task-panel">
             <div class="panel-heading">
               <div><span class="step-index">02</span><h2>重建任务</h2></div>
-              <button class="primary" type="button" :disabled="!canStartColmap || busy" @click="createJob('COLMAP_SPARSE')">启动 COLMAP</button>
+              <div class="reconstruction-actions">
+                <button class="secondary" type="button" :disabled="!canStartColmap || busy" title="保留原有快速稀疏点云流程" @click="createJob('COLMAP_SPARSE')">仅点云</button>
+                <button class="primary" type="button" :disabled="!canStartColmap || busy" @click="createJob('COLMAP_MESH')">生成表面模型</button>
+              </div>
             </div>
             <p v-if="images.length < 3" class="task-hint">再上传 {{ 3 - images.length }} 张图片即可启动真实重建。</p>
             <div class="job-list">
               <button v-for="job in jobs" :key="job.id" type="button" :class="['job-row', { selected: job.id === selectedJobId }]" @click="selectedJobId = job.id">
                 <span :class="['status-dot', job.status.toLowerCase()]" />
-                <span class="job-main"><strong>{{ job.algorithm === 'COLMAP_SPARSE' ? 'COLMAP 稀疏重建' : 'Demo 点云' }}</strong><small>{{ job.message }}</small></span>
+                <span class="job-main"><strong>{{ algorithmText(job.algorithm) }}</strong><small>{{ job.message }}</small></span>
                 <span class="job-side"><b>{{ statusText(job.status) }}</b><small>{{ formatDate(job.createdAt) }}</small></span>
               </button>
               <p v-if="!jobs.length" class="list-empty">上传照片并启动首个重建任务。</p>
             </div>
             <div v-if="selectedJob" class="job-actions">
-              <button v-if="selectedJob.algorithm === 'COLMAP_SPARSE'" type="button" :disabled="logLoading" @click="toggleJobLog">{{ showJobLog ? '关闭日志' : logLoading ? '读取中…' : '查看日志' }}</button>
+              <button v-if="selectedJob.algorithm.startsWith('COLMAP_')" type="button" :disabled="logLoading" @click="toggleJobLog">{{ showJobLog ? '关闭日志' : logLoading ? '读取中…' : '查看日志' }}</button>
               <button v-if="selectedJob.status === 'FAILED'" class="retry" type="button" :disabled="busy" @click="retrySelectedJob">重试任务</button>
             </div>
             <div v-if="showJobLog" class="log-panel"><div><span>COLMAP LOG · LAST 30K</span><button type="button" @click="showJobLog = false">×</button></div><pre>{{ jobLog }}</pre></div>
@@ -263,10 +282,10 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
 
         <article class="panel viewer-panel">
           <div class="panel-heading viewer-heading">
-            <div><span class="step-index">03</span><h2>三维点云</h2></div>
-            <a v-if="resultUrl" :href="resultUrl" download="sparse.ply">下载 PLY</a>
+            <div><span class="step-index">03</span><h2>三维成果</h2></div>
+            <a v-if="resultUrl" :href="resultUrl" :download="hasSurfaceModel ? 'model.glb' : 'sparse.ply'">下载 {{ hasSurfaceModel ? 'GLB' : 'PLY' }}</a>
           </div>
-          <PointCloudViewer :result-url="resultUrl" />
+          <ReconstructionViewer :result-url="resultUrl" :point-cloud-url="pointCloudUrl" :result-kind="resultKind" />
           <div class="viewer-footer">
             <span>左键旋转 · 右键平移 · 滚轮缩放</span>
             <span v-if="selectedJob">任务 {{ selectedJob.id.slice(0, 8) }}</span>
@@ -275,7 +294,7 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
       </section>
 
       <section v-else-if="!loading" class="welcome-state">
-        <span>文</span><h1>创建第一个数字文博项目</h1><p>组织多视角照片，运行 COLMAP，并在浏览器中检查稀疏点云。</p>
+        <span>文</span><h1>创建第一个数字文博项目</h1><p>组织多视角照片，运行 COLMAP，并在浏览器中查看表面模型与稀疏点云。</p>
         <button class="primary" type="button" @click="showProjectForm = true">开始创建</button>
       </section>
     </main>

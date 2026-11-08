@@ -6,6 +6,8 @@ import shutil
 import subprocess
 from uuid import UUID
 
+from app.mesh_export import convert_ply_mesh_to_glb, create_convex_hull_glb
+
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp"}
 
@@ -17,9 +19,12 @@ class ColmapPipelineError(RuntimeError):
 @dataclass(frozen=True)
 class ColmapResult:
     result_path: str
+    sparse_result_path: str
     point_count: int
+    face_count: int
     image_count: int
     model_directory: str
+    result_kind: str
 
 
 def run_colmap_sparse(
@@ -29,6 +34,21 @@ def run_colmap_sparse(
     input_root: Path,
     timeout_seconds: int,
 ) -> ColmapResult:
+    return run_colmap_reconstruction(
+        job_id, project_id, data_root, input_root, timeout_seconds, "SPARSE"
+    )
+
+
+def run_colmap_reconstruction(
+    job_id: UUID,
+    project_id: UUID,
+    data_root: Path,
+    input_root: Path,
+    timeout_seconds: int,
+    mode: str,
+) -> ColmapResult:
+    if mode not in {"SPARSE", "MESH", "DENSE"}:
+        raise ValueError(f"未知 COLMAP 重建模式: {mode}")
     project_images = (input_root / str(project_id)).resolve()
     if input_root not in project_images.parents or not project_images.is_dir():
         raise ColmapPipelineError("项目图像目录不存在")
@@ -103,30 +123,94 @@ def run_colmap_sparse(
     if not models:
         raise ColmapPipelineError("COLMAP 未能注册足够的图像，请检查照片重叠度和清晰度")
     model = max(models, key=_model_size)
-    result_path = workspace / "sparse.ply"
+    sparse_result_path = workspace / "sparse.ply"
     _run(
         [
             "colmap", "model_converter",
             "--input_path", str(model),
-            "--output_path", str(result_path),
+            "--output_path", str(sparse_result_path),
             "--output_type", "PLY",
         ],
         log_path,
         timeout_seconds,
     )
-    point_count = _ply_vertex_count(result_path)
+    point_count = _ply_vertex_count(sparse_result_path)
     if point_count <= 0:
         raise ColmapPipelineError("COLMAP 模型不包含有效三维点")
 
+    result_path = sparse_result_path
+    face_count = 0
+    result_kind = "POINT_CLOUD"
+    if mode == "MESH":
+        result_path = workspace / "model.glb"
+        face_count = create_convex_hull_glb(sparse_result_path, result_path)
+        result_kind = "SURFACE_MODEL"
+    elif mode == "DENSE":
+        dense_directory = workspace / "dense"
+        dense_directory.mkdir(parents=True, exist_ok=False)
+        _run(
+            [
+                "colmap", "image_undistorter",
+                "--image_path", str(images_directory),
+                "--input_path", str(model),
+                "--output_path", str(dense_directory),
+                "--output_type", "COLMAP",
+                "--max_image_size", "2000",
+            ],
+            log_path,
+            timeout_seconds,
+        )
+        _run(
+            [
+                "colmap", "patch_match_stereo",
+                "--workspace_path", str(dense_directory),
+                "--workspace_format", "COLMAP",
+                "--PatchMatchStereo.geom_consistency", "true",
+            ],
+            log_path,
+            timeout_seconds,
+        )
+        dense_cloud = dense_directory / "fused.ply"
+        _run(
+            [
+                "colmap", "stereo_fusion",
+                "--workspace_path", str(dense_directory),
+                "--workspace_format", "COLMAP",
+                "--input_type", "geometric",
+                "--output_path", str(dense_cloud),
+            ],
+            log_path,
+            timeout_seconds,
+        )
+        dense_mesh = dense_directory / "meshed-poisson.ply"
+        _run(
+            [
+                "colmap", "poisson_mesher",
+                "--input_path", str(dense_cloud),
+                "--output_path", str(dense_mesh),
+            ],
+            log_path,
+            timeout_seconds,
+        )
+        result_path = workspace / "model.glb"
+        face_count = convert_ply_mesh_to_glb(dense_mesh, result_path)
+        point_count = _ply_vertex_count(dense_cloud)
+        result_kind = "DENSE_MODEL"
+
     relative_result = result_path.relative_to(data_root).as_posix()
+    relative_sparse_result = sparse_result_path.relative_to(data_root).as_posix()
     metadata = {
         "jobId": str(job_id),
         "projectId": str(project_id),
-        "engine": "COLMAP_SPARSE",
+        "engine": f"COLMAP_{mode}",
+        "surfaceMethod": "SCIPY_CONVEX_HULL" if mode == "MESH" else None,
         "colmapVersion": _colmap_version(),
         "imageCount": len(source_images),
         "pointCount": point_count,
+        "faceCount": face_count,
+        "resultKind": result_kind,
         "resultPath": relative_result,
+        "sparseResultPath": relative_sparse_result,
         "modelDirectory": model.relative_to(workspace).as_posix(),
         "logPath": log_path.relative_to(workspace).as_posix(),
     }
@@ -135,9 +219,12 @@ def run_colmap_sparse(
     )
     return ColmapResult(
         result_path=relative_result,
+        sparse_result_path=relative_sparse_result,
         point_count=point_count,
+        face_count=face_count,
         image_count=len(source_images),
         model_directory=model.relative_to(workspace).as_posix(),
+        result_kind=result_kind,
     )
 
 

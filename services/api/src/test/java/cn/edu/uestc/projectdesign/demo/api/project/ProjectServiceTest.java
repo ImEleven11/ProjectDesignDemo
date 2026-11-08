@@ -12,6 +12,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.CreateJobRequest;
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.ProjectResponse;
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.JobResponse;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -31,6 +32,40 @@ class ProjectServiceTest {
         assertThatThrownBy(() -> service.createJob(projectId, new CreateJobRequest("COLMAP_SPARSE")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("至少需要 3 张图像");
+    }
+
+    @Test
+    void rejectsAColmapMeshJobWhenTheProjectHasFewerThanThreeImages() {
+        ProjectRepository repository = mock(ProjectRepository.class);
+        ProjectService service = service(repository);
+        UUID projectId = UUID.randomUUID();
+        when(repository.findProject(projectId)).thenReturn(java.util.Optional.of(project(projectId)));
+        when(repository.countImages(projectId)).thenReturn(2);
+
+        assertThatThrownBy(() -> service.createJob(projectId, new CreateJobRequest("COLMAP_MESH")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("至少需要 3 张图像");
+    }
+
+    @Test
+    void servesAGlbResultWithTheCorrectMediaType() throws Exception {
+        ProjectRepository repository = mock(ProjectRepository.class);
+        ProjectService service = service(repository);
+        UUID projectId = UUID.randomUUID();
+        UUID jobId = UUID.randomUUID();
+        when(repository.findProject(projectId)).thenReturn(java.util.Optional.of(project(projectId)));
+        when(repository.findJob(projectId, jobId)).thenReturn(java.util.Optional.of(new JobResponse(
+                jobId, projectId, "COLMAP_MESH", "SUCCEEDED", 8, "done",
+                "jobs/" + jobId + "/model.glb", OffsetDateTime.now(), OffsetDateTime.now())));
+        Path result = uploadRoot.resolve("results/jobs").resolve(jobId.toString()).resolve("model.glb");
+        java.nio.file.Files.createDirectories(result.getParent());
+        java.nio.file.Files.write(result, new byte[] { 0x67, 0x6c, 0x54, 0x46 });
+
+        ProjectService.ReconstructionArtifact artifact = service.getJobResult(projectId, jobId);
+
+        assertThat(artifact.path()).isEqualTo(result);
+        assertThat(artifact.filename()).isEqualTo("model.glb");
+        assertThat(artifact.contentType()).isEqualTo("model/gltf-binary");
     }
 
     @Test
