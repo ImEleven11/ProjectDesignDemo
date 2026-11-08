@@ -1,5 +1,9 @@
 import { createApp } from 'vue'
-import App from './App.vue'
 import './style.css'
 
-createApp(App).mount('#app')
+const publicView = window.location.pathname.startsWith('/exhibits')
+const Root = publicView
+  ? (await import('./PublicApp.vue')).default
+  : (await import('./App.vue')).default
+
+createApp(Root).mount('#app')

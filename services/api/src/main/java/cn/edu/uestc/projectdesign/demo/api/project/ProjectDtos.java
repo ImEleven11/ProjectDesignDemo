@@ -42,6 +42,8 @@ public final class ProjectDtos {
             String material,
             String dimensions,
             String provenance,
+            String publicationStatus,
+            OffsetDateTime publishedAt,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt) {
     }
@@ -102,5 +104,26 @@ public final class ProjectDtos {
     }
 
     public record RenameArtifactRequest(@NotBlank @Size(max = 160) String name) {
+    }
+
+    public record PublicHeritageResponse(
+            UUID id,
+            String name,
+            String description,
+            String heritageType,
+            String collectionCode,
+            String era,
+            String material,
+            String dimensions,
+            String provenance,
+            UUID artifactId,
+            UUID jobId,
+            String artifactName,
+            int versionNumber,
+            String format,
+            long pointCount,
+            long faceCount,
+            long sizeBytes,
+            OffsetDateTime publishedAt) {
     }
 }

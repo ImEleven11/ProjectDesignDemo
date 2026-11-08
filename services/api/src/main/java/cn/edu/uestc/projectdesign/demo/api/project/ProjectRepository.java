@@ -15,6 +15,7 @@ import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.ImageRespo
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.JobResponse;
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.ProjectResponse;
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.ArtifactResponse;
+import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.PublicHeritageResponse;
 
 @Repository
 public class ProjectRepository {
@@ -31,7 +32,7 @@ public class ProjectRepository {
                             (id, name, description, heritage_type, collection_code, era, material, dimensions, provenance)
                         VALUES (:id, :name, :description, :heritageType, :collectionCode, :era, :material, :dimensions, :provenance)
                         RETURNING id, name, description, heritage_type, collection_code, era, material,
-                                  dimensions, provenance, created_at, updated_at
+                                  dimensions, provenance, publication_status, published_at, created_at, updated_at
                         """)
                 .param("id", id)
                 .param("name", name)
@@ -49,7 +50,7 @@ public class ProjectRepository {
     List<ProjectResponse> findProjects() {
         return jdbcClient.sql("""
                         SELECT id, name, description, heritage_type, collection_code, era, material,
-                               dimensions, provenance, created_at, updated_at
+                               dimensions, provenance, publication_status, published_at, created_at, updated_at
                         FROM heritage_projects ORDER BY created_at DESC
                         """)
                 .query(ProjectRepository::mapProject)
@@ -59,7 +60,7 @@ public class ProjectRepository {
     Optional<ProjectResponse> findProject(UUID id) {
         return jdbcClient.sql("""
                         SELECT id, name, description, heritage_type, collection_code, era, material,
-                               dimensions, provenance, created_at, updated_at
+                               dimensions, provenance, publication_status, published_at, created_at, updated_at
                         FROM heritage_projects WHERE id = :id
                         """)
                 .param("id", id)
@@ -76,7 +77,7 @@ public class ProjectRepository {
                             provenance = :provenance, updated_at = CURRENT_TIMESTAMP
                         WHERE id = :id
                         RETURNING id, name, description, heritage_type, collection_code, era, material,
-                                  dimensions, provenance, created_at, updated_at
+                                  dimensions, provenance, publication_status, published_at, created_at, updated_at
                         """)
                 .param("id", id).param("name", name)
                 .param("description", description, Types.VARCHAR).param("heritageType", heritageType)
@@ -89,6 +90,41 @@ public class ProjectRepository {
     int deleteProject(UUID id) {
         return jdbcClient.sql("DELETE FROM heritage_projects WHERE id = :id")
                 .param("id", id).update();
+    }
+
+    ProjectResponse updatePublication(UUID projectId, String status) {
+        return jdbcClient.sql("""
+                        UPDATE heritage_projects SET publication_status = :status,
+                            published_at = CASE WHEN :status = 'PUBLISHED' THEN CURRENT_TIMESTAMP ELSE published_at END,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = :projectId
+                        RETURNING id, name, description, heritage_type, collection_code, era, material,
+                                  dimensions, provenance, publication_status, published_at, created_at, updated_at
+                        """)
+                .param("projectId", projectId).param("status", status)
+                .query(ProjectRepository::mapProject).single();
+    }
+
+    List<PublicHeritageResponse> findPublishedProjects() {
+        return jdbcClient.sql(publicHeritageSql() + " ORDER BY p.published_at DESC")
+                .query(ProjectRepository::mapPublicHeritage).list();
+    }
+
+    Optional<PublicHeritageResponse> findPublishedProject(UUID projectId) {
+        return jdbcClient.sql(publicHeritageSql() + " AND p.id = :projectId")
+                .param("projectId", projectId).query(ProjectRepository::mapPublicHeritage).optional();
+    }
+
+    private static String publicHeritageSql() {
+        return """
+                SELECT p.id, p.name, p.description, p.heritage_type, p.collection_code, p.era,
+                       p.material, p.dimensions, p.provenance, p.published_at,
+                       a.id AS artifact_id, a.job_id, a.name AS artifact_name, a.version_number,
+                       a.format, a.point_count, a.face_count, a.size_bytes
+                FROM heritage_projects p
+                JOIN reconstruction_artifacts a ON a.project_id = p.id AND a.is_current
+                WHERE p.publication_status = 'PUBLISHED'
+                """;
     }
 
     ImageResponse insertImage(UUID id, UUID projectId, String originalFilename, String storedFilename,
@@ -143,6 +179,19 @@ public class ProjectRepository {
                         resultSet.getObject("project_id", UUID.class),
                         resultSet.getString("original_filename"),
                         resultSet.getString("stored_filename"),
+                        resultSet.getString("content_type")))
+                .optional();
+    }
+
+    Optional<StoredImage> findFirstStoredImage(UUID projectId) {
+        return jdbcClient.sql("""
+                        SELECT id, project_id, original_filename, stored_filename, content_type
+                        FROM project_images WHERE project_id = :projectId ORDER BY created_at LIMIT 1
+                        """)
+                .param("projectId", projectId)
+                .query((resultSet, rowNumber) -> new StoredImage(
+                        resultSet.getObject("id", UUID.class), resultSet.getObject("project_id", UUID.class),
+                        resultSet.getString("original_filename"), resultSet.getString("stored_filename"),
                         resultSet.getString("content_type")))
                 .optional();
     }
@@ -374,6 +423,8 @@ public class ProjectRepository {
                 resultSet.getString("material"),
                 resultSet.getString("dimensions"),
                 resultSet.getString("provenance"),
+                resultSet.getString("publication_status"),
+                resultSet.getObject("published_at", OffsetDateTime.class),
                 resultSet.getObject("created_at", OffsetDateTime.class),
                 resultSet.getObject("updated_at", OffsetDateTime.class));
     }
@@ -411,6 +462,19 @@ public class ProjectRepository {
                 resultSet.getLong("size_bytes"), resultSet.getString("result_path"),
                 resultSet.getBoolean("is_current"), resultSet.getObject("created_at", OffsetDateTime.class),
                 resultSet.getObject("updated_at", OffsetDateTime.class));
+    }
+
+    private static PublicHeritageResponse mapPublicHeritage(ResultSet resultSet, int rowNumber) throws SQLException {
+        return new PublicHeritageResponse(
+                resultSet.getObject("id", UUID.class), resultSet.getString("name"),
+                resultSet.getString("description"), resultSet.getString("heritage_type"),
+                resultSet.getString("collection_code"), resultSet.getString("era"),
+                resultSet.getString("material"), resultSet.getString("dimensions"),
+                resultSet.getString("provenance"), resultSet.getObject("artifact_id", UUID.class),
+                resultSet.getObject("job_id", UUID.class), resultSet.getString("artifact_name"),
+                resultSet.getInt("version_number"), resultSet.getString("format"),
+                resultSet.getLong("point_count"), resultSet.getLong("face_count"),
+                resultSet.getLong("size_bytes"), resultSet.getObject("published_at", OffsetDateTime.class));
     }
 
     record StoredImage(

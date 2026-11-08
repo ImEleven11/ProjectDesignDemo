@@ -121,6 +121,22 @@ async function deleteCurrentProject() {
   busy.value = false
 }
 
+async function togglePublication() {
+  if (!selectedProject.value) return
+  busy.value = true
+  await run(async () => {
+    const updated = selectedProject.value!.publicationStatus === 'PUBLISHED'
+      ? await api.unpublishProject(selectedProject.value!.id)
+      : await api.publishProject(selectedProject.value!.id)
+    projects.value = projects.value.map((project) => project.id === updated.id ? updated : project)
+  })
+  busy.value = false
+}
+
+function publicationText(status: HeritageProject['publicationStatus']) {
+  return { DRAFT: '草稿', PUBLISHED: '已发布', UNPUBLISHED: '已下架' }[status]
+}
+
 async function selectArtifact(artifact: ReconstructionArtifact) {
   if (!selectedProjectId.value) return
   await run(async () => {
@@ -302,7 +318,13 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
             <span><strong>{{ jobs.length }}</strong> 次任务</span>
             <span><strong>{{ artifacts.length }}</strong> 个版本</span>
           </div>
-          <div class="archive-actions"><button type="button" @click="beginArchiveEdit">编辑档案</button><button class="danger" type="button" :disabled="busy || hasActiveJob" @click="deleteCurrentProject">删除项目</button></div>
+          <div class="archive-actions">
+            <span :class="['publication-badge', selectedProject.publicationStatus.toLowerCase()]">{{ publicationText(selectedProject.publicationStatus) }}</span>
+            <a v-if="selectedProject.publicationStatus === 'PUBLISHED'" :href="`/exhibits/${selectedProject.id}`" target="_blank">查看展页</a>
+            <button type="button" :disabled="busy || !artifacts.length" @click="togglePublication">{{ selectedProject.publicationStatus === 'PUBLISHED' ? '取消发布' : '发布展览' }}</button>
+            <button type="button" @click="beginArchiveEdit">编辑档案</button>
+            <button class="danger" type="button" :disabled="busy || hasActiveJob" @click="deleteCurrentProject">删除项目</button>
+          </div>
         </div>
       </section>
 

@@ -70,6 +70,16 @@ public class ProjectController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{projectId}/publish")
+    ProjectResponse publishProject(@PathVariable("projectId") UUID projectId) {
+        return service.publishProject(projectId);
+    }
+
+    @PostMapping("/{projectId}/unpublish")
+    ProjectResponse unpublishProject(@PathVariable("projectId") UUID projectId) {
+        return service.unpublishProject(projectId);
+    }
+
     @GetMapping("/{projectId}/artifacts")
     List<ArtifactResponse> listArtifacts(@PathVariable("projectId") UUID projectId) {
         return service.listArtifacts(projectId);

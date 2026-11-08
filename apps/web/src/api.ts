@@ -1,6 +1,6 @@
-import type { ApiError, HeritageProject, ProjectImage, ReconstructionArtifact, ReconstructionJob } from './types'
+import type { ApiError, HeritageProject, ProjectImage, PublicHeritage, ReconstructionArtifact, ReconstructionJob } from './types'
 
-export type ProjectPayload = Omit<HeritageProject, 'id' | 'createdAt' | 'updatedAt'>
+export type ProjectPayload = Omit<HeritageProject, 'id' | 'createdAt' | 'updatedAt' | 'publicationStatus' | 'publishedAt'>
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init)
@@ -55,6 +55,17 @@ export const api = {
 
   deleteProject: (projectId: string) =>
     requestVoid(`/api/projects/${projectId}`, { method: 'DELETE' }),
+
+  publishProject: (projectId: string) =>
+    request<HeritageProject>(`/api/projects/${projectId}/publish`, { method: 'POST' }),
+
+  unpublishProject: (projectId: string) =>
+    request<HeritageProject>(`/api/projects/${projectId}/unpublish`, { method: 'POST' }),
+
+  listPublicHeritage: () => request<PublicHeritage[]>('/api/public/heritage'),
+  getPublicHeritage: (projectId: string) => request<PublicHeritage>(`/api/public/heritage/${projectId}`),
+  publicCoverUrl: (projectId: string) => `/api/public/heritage/${projectId}/cover`,
+  publicModelUrl: (projectId: string, version: number) => `/api/public/heritage/${projectId}/model?v=${version}`,
 
   listArtifacts: (projectId: string) =>
     request<ReconstructionArtifact[]>(`/api/projects/${projectId}/artifacts`),

@@ -136,6 +136,31 @@ class ProjectServiceTest {
     }
 
     @Test
+    void rejectsPublishingWithoutACurrentArtifact() {
+        ProjectRepository repository = mock(ProjectRepository.class);
+        ProjectService service = service(repository);
+        UUID projectId = UUID.randomUUID();
+        when(repository.findProject(projectId)).thenReturn(java.util.Optional.of(project(projectId)));
+        when(repository.findArtifacts(projectId)).thenReturn(java.util.List.of());
+
+        assertThatThrownBy(() -> service.publishProject(projectId))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("当前展示成果");
+    }
+
+    @Test
+    void hidesAnUnpublishedProjectFromThePublicApi() {
+        ProjectRepository repository = mock(ProjectRepository.class);
+        ProjectService service = service(repository);
+        UUID projectId = UUID.randomUUID();
+        when(repository.findPublishedProject(projectId)).thenReturn(java.util.Optional.empty());
+
+        assertThatThrownBy(() -> service.getPublicHeritage(projectId))
+                .isInstanceOf(cn.edu.uestc.projectdesign.demo.api.common.NotFoundException.class)
+                .hasMessageContaining("不存在或已下架");
+    }
+
+    @Test
     void onlyFailedJobsCanBeRetried() {
         ProjectRepository repository = mock(ProjectRepository.class);
         ProjectService service = service(repository);
@@ -153,7 +178,8 @@ class ProjectServiceTest {
 
     private static ProjectResponse project(UUID id) {
         OffsetDateTime now = OffsetDateTime.now();
-        return new ProjectResponse(id, "测试文物", null, "器物", null, null, null, null, null, now, now);
+        return new ProjectResponse(id, "测试文物", null, "器物", null, null, null, null, null,
+                "DRAFT", null, now, now);
     }
 
     private ProjectService service(ProjectRepository repository) {

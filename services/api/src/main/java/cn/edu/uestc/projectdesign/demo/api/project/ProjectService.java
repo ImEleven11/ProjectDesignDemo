@@ -24,6 +24,7 @@ import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.JobRespons
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.ProjectResponse;
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.UpdateProjectRequest;
 import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.ArtifactResponse;
+import static cn.edu.uestc.projectdesign.demo.api.project.ProjectDtos.PublicHeritageResponse;
 
 @Service
 public class ProjectService {
@@ -143,8 +144,9 @@ public class ProjectService {
             try {
                 contentType = Files.probeContentType(content);
             } catch (IOException ignored) {
-                contentType = MediaTypeNames.OCTET_STREAM;
+                // Fall through to the extension-based mapping below.
             }
+            contentType = contentType == null ? imageContentType(image.originalFilename()) : contentType;
         }
         return new ImageContent(content, image.originalFilename(), contentType);
     }
@@ -247,6 +249,51 @@ public class ProjectService {
     public List<ArtifactResponse> listArtifacts(UUID projectId) {
         getProject(projectId);
         return repository.findArtifacts(projectId).stream().map(this::hydrateArtifactMetrics).toList();
+    }
+
+    @Transactional
+    public ProjectResponse publishProject(UUID projectId) {
+        getProject(projectId);
+        if (repository.findArtifacts(projectId).stream().noneMatch(ArtifactResponse::current)) {
+            throw new IllegalArgumentException("发布前必须选择一个当前展示成果");
+        }
+        return repository.updatePublication(projectId, "PUBLISHED");
+    }
+
+    @Transactional
+    public ProjectResponse unpublishProject(UUID projectId) {
+        ProjectResponse project = getProject(projectId);
+        String nextStatus = "DRAFT".equals(project.publicationStatus()) ? "DRAFT" : "UNPUBLISHED";
+        return repository.updatePublication(projectId, nextStatus);
+    }
+
+    public List<PublicHeritageResponse> listPublicHeritage() {
+        return repository.findPublishedProjects();
+    }
+
+    public PublicHeritageResponse getPublicHeritage(UUID projectId) {
+        return repository.findPublishedProject(projectId)
+                .orElseThrow(() -> new NotFoundException("公开文物不存在或已下架: " + projectId));
+    }
+
+    public ReconstructionArtifact getPublicModel(UUID projectId) {
+        PublicHeritageResponse heritage = getPublicHeritage(projectId);
+        return getJobResult(projectId, heritage.jobId());
+    }
+
+    public ImageContent getPublicCover(UUID projectId) {
+        getPublicHeritage(projectId);
+        ProjectRepository.StoredImage image = repository.findFirstStoredImage(projectId)
+                .orElseThrow(() -> new NotFoundException("公开文物没有代表图片: " + projectId));
+        Path content = resolveUpload(projectId, image.storedFilename());
+        if (!Files.isRegularFile(content)) {
+            throw new NotFoundException("代表图片文件不存在: " + projectId);
+        }
+        String contentType = image.contentType();
+        if (contentType == null || MediaTypeNames.OCTET_STREAM.equals(contentType)) {
+            contentType = imageContentType(image.originalFilename());
+        }
+        return new ImageContent(content, image.originalFilename(), contentType);
     }
 
     private ArtifactResponse hydrateArtifactMetrics(ArtifactResponse artifact) {
@@ -360,6 +407,17 @@ public class ProjectService {
         }
         String extension = filename.substring(index).toLowerCase(Locale.ROOT);
         return extension.matches("\\.[a-z0-9]{1,10}") ? extension : "";
+    }
+
+    private static String imageContentType(String filename) {
+        return switch (extensionOf(filename)) {
+            case ".bmp" -> "image/bmp";
+            case ".gif" -> "image/gif";
+            case ".jpg", ".jpeg" -> "image/jpeg";
+            case ".png" -> "image/png";
+            case ".webp" -> "image/webp";
+            default -> MediaTypeNames.OCTET_STREAM;
+        };
     }
 
     private static String trimToNull(String value) {

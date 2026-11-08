@@ -8,8 +8,31 @@ export interface HeritageProject {
   material: string | null
   dimensions: string | null
   provenance: string | null
+  publicationStatus: 'DRAFT' | 'PUBLISHED' | 'UNPUBLISHED'
+  publishedAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+export interface PublicHeritage {
+  id: string
+  name: string
+  description: string | null
+  heritageType: string
+  collectionCode: string | null
+  era: string | null
+  material: string | null
+  dimensions: string | null
+  provenance: string | null
+  artifactId: string
+  jobId: string
+  artifactName: string
+  versionNumber: number
+  format: string
+  pointCount: number
+  faceCount: number
+  sizeBytes: number
+  publishedAt: string
 }
 
 export interface ReconstructionArtifact {
