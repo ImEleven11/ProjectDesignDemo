@@ -1,6 +1,6 @@
 # ProjectDesignDemo
 
-数字文博三维重建 Demo。当前已具备文物档案、图片管理、真实 COLMAP 异步重建、GLB/PLY 在线查看以及模型成果版本管理的完整运行闭环。
+数字文博三维重建 Demo。当前已具备文物档案、图片管理、真实 COLMAP 异步重建、GLB/PLY 在线查看、成果版本管理、发布和独立公开展示的完整运行闭环。
 
 项目各阶段的完成记录、验收结果和后续步骤见 [`DEMO_PROGRESS.md`](DEMO_PROGRESS.md)。
 
@@ -20,12 +20,15 @@
 默认入口：
 
 - Web：http://localhost:5173
+- 公开数字馆藏：http://localhost:5173/exhibits
 - API 健康检查：http://localhost:8080/actuator/health/readiness
 - 重建工作进程健康检查：http://localhost:8001/health
 
 Web 工作台支持创建项目、批量上传图片、启动 COLMAP、轮询任务状态、下载 GLB/PLY，并通过鼠标旋转、平移和缩放切换查看表面模型与稀疏点云。Nginx 将 `/api` 同源代理到 Spring Boot 服务。
 
 每个项目可记录藏品编号、年代、材质、尺寸、来源与简介。每次成功重建都会自动形成可追溯成果版本，记录格式、点数、面数、文件大小和生成时间；用户可重命名、删除成果并选择当前展示版本。
+
+项目默认处于草稿状态。选择当前展示成果后，可从管理工作台发布或取消发布；访客只能在独立数字馆藏页面查看已发布文物的代表图、档案信息和当前三维模型。
 
 ## 业务 API
 
@@ -47,6 +50,8 @@ Web 工作台支持创建项目、批量上传图片、启动 COLMAP、轮询任
 | `PATCH` | `/api/projects/{projectId}/artifacts/{artifactId}` | 重命名成果版本 |
 | `POST` | `/api/projects/{projectId}/artifacts/{artifactId}/select` | 设置当前展示版本 |
 | `DELETE` | `/api/projects/{projectId}/artifacts/{artifactId}` | 删除成果版本及对应文件 |
+| `POST` | `/api/projects/{projectId}/publish` | 发布具有当前展示成果的文物 |
+| `POST` | `/api/projects/{projectId}/unpublish` | 取消发布文物 |
 | `POST` | `/api/projects/{projectId}/images` | 以 multipart 形式上传一张图像 |
 | `GET` | `/api/projects/{projectId}/images` | 查询项目图像列表 |
 | `GET` | `/api/projects/{projectId}/images/{imageId}` | 查询图像元数据 |
@@ -59,6 +64,10 @@ Web 工作台支持创建项目、批量上传图片、启动 COLMAP、轮询任
 | `GET` | `/api/projects/{projectId}/jobs/{jobId}/log` | 查看 COLMAP 日志末尾 |
 | `GET` | `/api/projects/{projectId}/jobs/{jobId}/result` | 下载成功任务的 GLB 模型或 PLY 点云 |
 | `GET` | `/api/projects/{projectId}/jobs/{jobId}/point-cloud` | 下载表面模型任务配套的稀疏 PLY 点云 |
+| `GET` | `/api/public/heritage` | 查询已发布文物列表 |
+| `GET` | `/api/public/heritage/{projectId}` | 查询已发布文物详情和当前成果 |
+| `GET` | `/api/public/heritage/{projectId}/cover` | 读取公开代表图片 |
+| `GET` | `/api/public/heritage/{projectId}/model` | 读取公开 GLB 模型 |
 
 创建项目的 JSON 示例：
 
