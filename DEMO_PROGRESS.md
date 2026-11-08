@@ -148,7 +148,7 @@
 ### 阶段八：文物档案与重建成果管理
 
 状态：已完成
-对应提交：本阶段功能提交
+对应提交：`c2ae9d3 feat: add heritage archives and artifact versions`
 
 已完成任务：
 
